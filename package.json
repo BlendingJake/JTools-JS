@@ -1,0 +1,12 @@
+{
+  "name": "jtools-js",
+  "version": "1.0.0",
+  "description": "A JavaScript package that aids filtering, formatting, and transforming JSON-like objects",
+  "main": "./jtools/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Jacob Morris",
+  "license": "MIT"
+}
