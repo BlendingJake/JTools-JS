@@ -1,3 +1,5 @@
+import moment from "moment";
+
 const _specials = {
     // general
     length: (value) => { return value.length; },
@@ -12,9 +14,23 @@ const _specials = {
     float: (value) => { return parseFloat(value); },
     string: (value) => { return value.toString(); },
     int: (value) => { return parseInt(value); },
+    not: (value) => { return !value; },
     fallback: (value, fallback) => { return (value) ? value : fallback; },
-    timestamp: (value, fmt="YYYY-MM-DD[T]HH:mm:ss[Z]") => {
-        return moment.unix(value).utc().format(fmt);
+    ternary: (value, if_true, if_false, strict=false) => {
+        if ( (value && strict === false) || (value === true && strict === true) ) {
+            return if_true;
+        } else {
+            return if_false;
+        }
+    },
+
+    // datetime
+    parse_timestamp: (value) => { return moment.unix(value); },
+    datetime: (value, attr) => { return value[attr](); },
+    strptime: (value, fmt=null) => { return (fmt === null) ? moment(value) : moment(value, fmt); },
+    timestamp: (value) => { return value.utc().unix(); },
+    strftime: (value, fmt="YYYY-MM-DD[T]HH:mm:ss[Z]") => {
+        return value.format(fmt);
     },
 
     // math / numeric
@@ -32,13 +48,13 @@ const _specials = {
         return Math.sqrt(sum);
     },
     math: (value, attr) => { return Math[attr](value); },
-    round: (value, n=2) => { return value.toPrecision(2); },
+    round: (value, n=2) => { return value.toFixed(2); },
 
     // string
     prefix: (value, prefix) => { return prefix + value; },
     suffix: (value, suffix) => { return value + suffix; },
-    replace: (value, old, new_) => { return value.replace(old, new_); },
     strip: (value) => { return value.trim(); },
+    replace: (value, old, new_) => { return value.replace(old, new_); },
     trim: (value, length=50, suffix="...") => {
         let trimmed = value.substring(0, length-suffix.length);
         if (value.length > length-suffix.length) {
@@ -89,16 +105,18 @@ const _full_pattern = new RegExp("(" + _field.source + ")(" + _part.source + "*)
 
 export class Getter {
     constructor(field, fallback=null) {
-        this.field = field;
+        this.multiple = !(typeof field === "string" || field instanceof String);
+        this.field = (this.multiple === true) ? field : [field];
         this.fallback = fallback;
-        this.parts = [];
-        this._process_field();
+
+        this.parts = this.field.map(f => this._process_field(f));
     }
 
-    _process_field() {
-        let match = this.field.match(_full_pattern);
+    _process_field(field) {
+        let parts = [];
+        let match = field.match(_full_pattern);
         if (match !== null) {
-            this.parts.push(match[1]);
+            parts.push(match[1]);
 
             if (match[2] !== "") {
                 for (let part of match[2].matchAll(_part)) {
@@ -117,16 +135,18 @@ export class Getter {
                             args = [];
                         }
 
-                        this.parts.push({
+                        parts.push({
                             special: special,
                             args: args
                         });
                     } else {
-                        this.parts.push(part[1]);
+                        parts.push(part[1]);
                     }
                 }
             }
         }
+
+        return parts;
     }
 
     static full_regex() {
@@ -141,24 +161,36 @@ export class Getter {
         }
     }
 
-    get(item) {
-        let value = item;
+    single(item) {
+        let values = [];
         if (this.parts.length === 0) {
             return this.fallback;
         } else {
-            for (let part of this.parts) {
-                if (part.special !== undefined) {
-                    value = _specials[part.special](value, ...part.args);
-                } else {
-                    if (value[part] !== undefined) {
-                        value = value[part];
-                    } else {
-                        return this.fallback;
+            let value;
+            for (let field of this.parts) {
+                value = item;
+                for (let part of field) {
+                    if (value !== this.fallback) {
+                        if (part.special !== undefined) {
+                            value = _specials[part.special](value, ...part.args);
+                        } else {
+                            if (value[part] !== undefined) {
+                                value = value[part];
+                            } else {
+                                value = this.fallback;
+                            }
+                        }
                     }
                 }
+
+                values.push(value);
             }
         }
 
-        return value;
+        return (this.multiple === true) ? values : values[0];
+    }
+
+    many(items) {
+        return items.map(item => this.single(item));
     }
 }

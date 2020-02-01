@@ -1,4 +1,4 @@
-import { Getter } from "./getter.mjs";
+import { Getter } from "./getter.js";
 
 const _full_replacement = new RegExp("(?!\\\\){{\\s*" + Getter.full_regex() + "\\s*(?<!\\\\)}}");
 

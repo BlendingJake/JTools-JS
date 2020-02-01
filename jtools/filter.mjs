@@ -1,4 +1,4 @@
-import { Getter } from "./getter.mjs";
+import { Getter } from "./getter.js";
 
 export class Condition {
     constructor(field, operator, value) {
@@ -11,11 +11,11 @@ export class Condition {
         return this.output.toString();
     }
 
-    and(other) {
+    and_(other) {
         this.output.push(...other.output);
     }
 
-    or(other) {
+    or_(other) {
         let temp = [];
         [this, other].forEach(item => {
             if (item.output.length === 1) {
@@ -30,6 +30,11 @@ export class Condition {
         });
 
         this.output = [{or: temp}];
+        return this;
+    }
+
+    not_() {
+        this.output = [{not: this.output}];
         return this;
     }
 
@@ -83,6 +88,14 @@ class _Key {
         return new Condition(this.field, "!contains", other);
     }
 
+    interval(other) {
+        return new Condition(this.field, "interval", other);
+    }
+
+    not_interval(other) {
+        return new Condition(this.field, "!interval", other);
+    }
+
     startswith(other) {
         return new Condition(this.field, "startswith", other);
     }
@@ -91,7 +104,7 @@ class _Key {
         return new Condition(this.field, "endswith", other);
     }
 
-    non(other) {
+    none(other) {
         return new Condition(this.field, "null", other);
     }
 
@@ -162,6 +175,8 @@ export class Filter {
                 c = this._filter(item, f);
             } else if (f.or !== undefined) {
                 c = this._filter(item, f.or, true);
+            } else if (f.not !== undefined) {
+                c = !this._filter(item, f.not);
             } else {
                 c = _filters[f.operator](this.getters[f.field].get(item), f.value);
             }

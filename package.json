@@ -4,9 +4,15 @@
   "description": "A JavaScript package that aids filtering, formatting, and transforming JSON-like objects",
   "main": "./jtools/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "keywords": [],
   "author": "Jacob Morris",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^25.1.0"
+  },
+  "dependencies": {
+    "moment": "^2.24.0"
+  }
 }
