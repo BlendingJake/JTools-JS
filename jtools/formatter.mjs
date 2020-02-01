@@ -1,4 +1,4 @@
-import { Getter } from "./getter.js";
+import { Getter } from "./getter.mjs";
 
 const _full_replacement = new RegExp("(?!\\\\){{\\s*" + Getter.full_regex() + "\\s*(?<!\\\\)}}");
 
@@ -29,6 +29,6 @@ export class Formatter {
             field += match[1];
         }
 
-        return (new Getter(field)).get(item).toString();
+        return (new Getter(field)).single(item).toString();
     }
 }

@@ -1,4 +1,4 @@
-import { Getter } from "./getter.js";
+import { Getter } from "./getter.mjs";
 
 export class Condition {
     constructor(field, operator, value) {
@@ -201,7 +201,7 @@ export class Filter {
         return overall || false;
     }
 
-    filter(items) {
+    many(items) {
         let out = [];
         items.forEach(item => {
             if (this._filter(item) === true) {
@@ -212,7 +212,7 @@ export class Filter {
         return out;
     }
 
-    filter_single(item) {
+    single(item) {
         return this._filter(item);
     }
 }
