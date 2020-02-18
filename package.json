@@ -2,14 +2,16 @@
   "name": "jtools-js",
   "version": "1.0.0",
   "description": "A JavaScript package that aids filtering, formatting, and transforming JSON-like objects",
-  "main": "./jtools/index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest --collect-coverage --no-cache"
   },
   "keywords": [],
   "author": "Jacob Morris",
   "license": "MIT",
   "devDependencies": {
+    "@babel/core": "^7.8.4",
+    "@babel/preset-env": "^7.8.4",
+    "babel-jest": "^25.1.0",
     "jest": "^25.1.0"
   },
   "dependencies": {

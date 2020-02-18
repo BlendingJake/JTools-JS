@@ -1,4 +1,4 @@
-import { Getter } from "./getter.mjs";
+import { Getter } from "./getter.js";
 
 export class Condition {
     constructor(field, operator, value) {
@@ -11,25 +11,33 @@ export class Condition {
         return this.output.toString();
     }
 
-    and_(other) {
-        this.output.push(...other.output);
+    and_(...args) {
+        for (let a of args) {
+            this.output.push(...a.output);
+        }
+
+        return this;
     }
 
-    or_(other) {
-        let temp = [];
-        [this, other].forEach(item => {
-            if (item.output.length === 1) {
-                if (item.output[0].or !== undefined) {
-                    temp.push(...item.output[0].or);
+    or_(...args) {
+        let temp;
+        for (let a of args) {
+            temp = [];
+            [this, a].forEach(item => {
+                if (item.output.length === 1) {
+                    if (item.output[0].or !== undefined) {
+                        temp.push(...item.output[0].or);
+                    } else {
+                        temp.push(item.output);
+                    }
                 } else {
                     temp.push(item.output);
                 }
-            } else {
-                temp.push(item.output);
-            }
-        });
+            });
 
-        this.output = [{or: temp}];
+            this.output = [{or: temp}];
+        }
+
         return this;
     }
 
@@ -125,10 +133,13 @@ const _filters = {
     "==": (field, value) => { return field === value; },
     "!=": (field, value) => { return field !== value; },
 
-    "in": (field, value) => { return field.includes(value); },
-    "!in": (field, value) => { return !field.includes(value); },
-    "contains": (field, value) => { return value.includes(field); },
-    "!contains": (field, value) => { return !value.includes(field); },
+    "in": (field, value) => { return value.includes(field); },
+    "!in": (field, value) => { return !value.includes(field); },
+    "contains": (field, value) => { return field.includes(value); },
+    "!contains": (field, value) => { return !field.includes(value); },
+
+    "interval": (field, value) => { return field >= value[0] && field <= value[1]; },
+    "!interval": (field, value) => { return field < value[0] || field > value[1]; },
 
     "startswith": (field, value) => { return field.startsWith(value); },
     "endswith": (field, value) => { return field.endsWith(value); },
@@ -138,7 +149,7 @@ const _filters = {
 };
 
 export class Filter {
-    constructor(filters) {
+    constructor(filters, params={}) {
         if (filters instanceof Condition) {
             this.filters = filters.filters();
         } else {
@@ -146,6 +157,7 @@ export class Filter {
         }
 
         this.getters = this._preprocess(this.filters);
+        this.empty_filters_response = params.empty_filters_response || true;
     }
 
     _preprocess(filters) {
@@ -155,6 +167,8 @@ export class Filter {
                 out = {...out, ...this._preprocess(f)};
             } else if (f.or !== undefined) {
                 out = {...out, ...this._preprocess(f.or)};
+            } else if (f.not !== undefined) {
+                out = {...out, ...this._preprocess(f.not)};
             } else if (out[f.field] === undefined) {
                 out[f.field] = new Getter(f.field);
             }
@@ -178,12 +192,12 @@ export class Filter {
             } else if (f.not !== undefined) {
                 c = !this._filter(item, f.not);
             } else {
-                c = _filters[f.operator](this.getters[f.field].get(item), f.value);
+                c = _filters[f.operator](this.getters[f.field].single(item), f.value);
             }
 
             if (overall === null) {
                 overall = c;
-            } else if (f.or !== undefined && oring === true) {
+            } else if (f.or !== undefined || oring === true) {
                 overall = c || overall;
 
                 if (overall === true) {  // shortcut or
@@ -198,7 +212,7 @@ export class Filter {
             }
         }
 
-        return overall || false;
+        return (overall === null) ? this.empty_filters_response : overall;
     }
 
     many(items) {

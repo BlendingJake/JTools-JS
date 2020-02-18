@@ -1,1 +1,0 @@
-import { Getter } from "../jtools";

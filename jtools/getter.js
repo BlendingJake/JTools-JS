@@ -2,7 +2,15 @@ import moment from "moment";
 
 const _specials = {
     // general
-    length: (value) => { return value.length; },
+    length: (value) => {
+        if (value.size !== undefined) {
+            return value.size;
+        } else if (value.length !== undefined) {
+            return value.length;
+        } else {
+            return Object.keys(value).length;
+        }
+    },
 
     // maps
     keys: (value) => { return Object.keys(value); },
@@ -25,7 +33,7 @@ const _specials = {
     },
 
     // datetime
-    parse_timestamp: (value) => { return moment.unix(value); },
+    parse_timestamp: (value) => { return moment.unix(value).utc(); },
     datetime: (value, attr) => { return value[attr](); },
     strptime: (value, fmt=null) => { return (fmt === null) ? moment(value) : moment(value, fmt); },
     timestamp: (value) => { return value.utc().unix(); },
@@ -48,7 +56,7 @@ const _specials = {
         return Math.sqrt(sum);
     },
     math: (value, attr) => { return Math[attr](value); },
-    round: (value, n=2) => { return value.toFixed(2); },
+    round: (value, n=2) => { return value.toFixed(n); },
 
     // string
     prefix: (value, prefix) => { return prefix + value; },
@@ -98,10 +106,10 @@ const _specials = {
     })},
 };
 
-const _func_def = new RegExp(/(?:\$[a-z]+(?:\(((?:(?!{{)(?:(?:"(?!{{)[^"]*")|[^\)]))*)\))?)/i);
+const _func_def = new RegExp(/(?:\$[a-z_]+(?:\(((?:(?!{{)(?:(?:"(?!{{)[^"]*")|[^\)]))*)\))?)/i);
 const _field = new RegExp(/[-_a-zA-Z0-9]+/i);
 const _part = new RegExp("(?:\\.(" + _func_def.source + "|" + _field.source + "))", "gi");
-const _full_pattern = new RegExp("(" + _field.source + ")(" + _part.source + "*)", "i");
+const _full_pattern = new RegExp("(" + _func_def.source + "|" + _field.source + ")(" + _part.source + "*)", "i");
 
 export class Getter {
     constructor(field, fallback=null) {
@@ -116,29 +124,15 @@ export class Getter {
         let parts = [];
         let match = field.match(_full_pattern);
         if (match !== null) {
-            parts.push(match[1]);
-
-            if (match[2] !== "") {
-                for (let part of match[2].matchAll(_part)) {
+            if (match[1][0] === "$") {
+                parts.push(this._parse_special(match[1], match[2]));
+            } else {
+                parts.push(match[1]);
+            }
+            if (match[3] !== "") {
+                for (let part of match[3].matchAll(_part)) {
                     if (part[1][0] === "$") {
-                        let special;
-                        if (part[1].indexOf("(") !== -1) {
-                            special = part[1].slice(1, part[1].indexOf("("));
-                        } else {
-                            special = part[1].slice(1);
-                        }
-
-                        let args;
-                        if (part[2] !== undefined) {
-                            args = JSON.parse(`[${part[2]}]`);
-                        } else {
-                            args = [];
-                        }
-
-                        parts.push({
-                            special: special,
-                            args: args
-                        });
+                        parts.push(this._parse_special(part[1], part[2]));
                     } else {
                         parts.push(part[1]);
                     }
@@ -149,15 +143,39 @@ export class Getter {
         return parts;
     }
 
+    _parse_special(text, args_text) {
+        let special;
+        if (text.indexOf("(") !== -1) {
+            special = text.slice(1, text.indexOf("("));
+        } else {
+            special = text.slice(1);
+        }
+
+        let args;
+        if (args_text !== undefined) {
+            args = JSON.parse(`[${args_text}]`);
+        } else {
+            args = [];
+        }
+
+        return {
+            special: special,
+            args: args
+        };
+    }
+
     static full_regex() {
         return _full_pattern.source;
     }
 
-    register_special(name, func) {
+    static register_special(name, func) {
         if (_specials[name] !== undefined) {
             _specials[name] = func;
+            console.log(_specials[name]);
+            return true;
         } else {
-            throw new Error(`${name} is already registered as a special value`);
+            console.warn(`${name} is already registered as a special value`);
+            return false;
         }
     }
 
