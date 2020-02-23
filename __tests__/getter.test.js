@@ -1,5 +1,4 @@
-import { Getter } from "../jtools";
-import moment from "moment";
+import { Getter } from "../dist";
 let small_data = require("./data/20.json");
 
 test(".single() for single field", () => {
@@ -121,12 +120,23 @@ test("$length of array", () => {
     expect(
         new Getter('friends.$length').single(small_data[0])
     ).toStrictEqual(small_data[0].friends.length);
+
+    expect(
+        new Getter('friends.$attr("length")').single(small_data[0])
+    ).toStrictEqual(small_data[0].friends.length);
 });
 
 test("$length of map", () => {
     expect(
         new Getter('favoriteFruit.$length').single(small_data[0])
     ).toStrictEqual(Object.keys(small_data[0]["favoriteFruit"]).length);
+});
+
+test("$length of set", () => {
+    let set = new Set([1, 2, 3]);
+    expect(
+        new Getter('set.$length').single({set: set})
+    ).toStrictEqual(set.size);
 });
 
 test("$keys", () => {
@@ -147,6 +157,18 @@ test("$items", () => {
     ).toStrictEqual(Object.keys(small_data[2].favoriteFruit).map(key => [key, small_data[2].favoriteFruit[key]]));
 });
 
+test("$set", () => {
+    expect(
+        new Getter("gender.$set.$length").single(small_data[0])
+    ).toStrictEqual(small_data[0].gender.length);
+});
+
+test("$string", () => {
+    expect(
+        new Getter("gender.$set.$length.$string").single(small_data[0])
+    ).toStrictEqual(small_data[0].gender.length.toString());
+});
+
 test("$fallback", () => {
     expect(
         new Getter('isActive.$fallback("NOT ACTIVE")').single(small_data[0])
@@ -155,26 +177,32 @@ test("$fallback", () => {
 
 test("$ternary", () => {
     expect(
-        new Getter('isActive.$ternary("TRUE", "FALSE")').single(small_data[0])
+        new Getter('isActive.$ternary("TRUE", "FALSE")').single({isActive: false})
     ).toStrictEqual("FALSE");
 });
 
 test("$not.$ternary", () => {
     expect(
-        new Getter('isActive.$not.$ternary("TRUE", "FALSE")').single(small_data[0])
+        new Getter('isActive.$not.$ternary("TRUE", "FALSE")').single({isActive: false})
     ).toStrictEqual("TRUE");
 });
 
 test("$ternary strict", () => {
     expect(
-        new Getter('index.$ternary("TRUE", "FALSE", true)').single(small_data[1])
+        new Getter('isActive.$ternary("TRUE", "FALSE", true)').single({isActive: ""})
     ).toStrictEqual("FALSE");
+    expect(
+        new Getter('isActive.$ternary("TRUE", "FALSE", true)').single({isActive: true})
+    ).toStrictEqual("TRUE");
 });
 
 test("$ternary not strict", () => {
     expect(
-        new Getter('index.$ternary("TRUE", "FALSE", false)').single(small_data[1])
+        new Getter('isActive.$ternary("TRUE", "FALSE", false)').single({isActive: "a"})
     ).toStrictEqual("TRUE");
+    expect(
+        new Getter('isActive.$ternary("TRUE", "FALSE", false)').single({isActive: ""})
+    ).toStrictEqual("FALSE");
 });
 
 test("$parse_timestamp then $timestamp", () => {
@@ -195,15 +223,19 @@ test("$parse_timestamp then $strftime", () => {
     ).toStrictEqual("01/25/2020");
 });
 
-test("$strptime then $timestamp", () => {
+test("$strptime", () => {
     expect(
         new Getter('t.$strptime("MM/DD/YYYY").$timestamp').single({t: "01/25/2020"})
     ).toStrictEqual(1579928400);
+    expect(
+        new Getter('t.$strptime.$call("date")').single({t: "1995-12-25"})
+    ).toStrictEqual(25);
+
 });
 
-test("datetime('day')", () => {
+test("$call('date')", () => {
     expect(
-        new Getter('t.$strptime("MM/DD/YYYY").$datetime("date")').single({t: "01/25/2020"})
+        new Getter('t.$strptime("MM/DD/YYYY").$call("date")').single({t: "01/25/2020"})
     ).toStrictEqual(25);
 });
 
@@ -245,8 +277,17 @@ test("strings", () => {
     ).toStrictEqual(small_data[0]["about"].substring(0, 47) + "...");
 
     expect(
+        new Getter("about.$trim").single({about: "short"})
+    ).toStrictEqual("short");
+
+    expect(
         new Getter('about.$trim(25, "")').single(small_data[0])
     ).toStrictEqual(small_data[0]["about"].substring(0, 25));
+
+    let data = "test 1";
+    expect(
+        new Getter('test.$split').single({test: data})
+    ).toStrictEqual(data.split(" "));
 
     expect(
         new Getter('guid.$split("-")').single(small_data[0])
@@ -254,7 +295,7 @@ test("strings", () => {
 });
 
 test("list", () => {
-    let data = {a: [43.2, -34, 54.2]};
+    let data = {a: [43.2, -34, 54.2], b: {c: 4}};
     expect(
         new Getter("a.$sum").single(data)
     ).toStrictEqual(data.a[0] + data.a[1] + data.a[2]);
@@ -268,8 +309,20 @@ test("list", () => {
     ).toStrictEqual(data.a[2]);
 
     expect(
+        new Getter("a.$index(-1)").single(data)
+    ).toStrictEqual(data.a[2]);
+
+    expect(
+        new Getter('b.$index("c")').single(data)
+    ).toStrictEqual(data.b.c);
+
+    expect(
         new Getter("a.$range(1)").single(data)
     ).toStrictEqual(data.a.slice(1));
+
+    expect(
+        new Getter("a.$range(0, 2)").single(data)
+    ).toStrictEqual(data.a.slice(0, 2));
 
     expect(
         new Getter("a.$range(1, -1)").single(data)
@@ -284,9 +337,20 @@ test("$map and several more", () => {
     );
 });
 
-// test("register special", () => {
-//     Getter.register_special("cube", (value) => Math.pow(value, 3));
-//     expect(
-//         new Getter("a.$cube").single({a: 2})
-//     ).toStrictEqual(8);
-// });
+test("empty field", () => {
+    expect(
+        new Getter("", "MISSING").single(small_data[0])
+    ).toStrictEqual("MISSING");
+});
+
+test("register special", () => {
+    expect(
+        Getter.register_special("cube", (value) => Math.pow(value, 3))
+    ).toStrictEqual(true);
+    expect(
+        new Getter("a.$cube").single({a: 2})
+    ).toStrictEqual(8);
+    expect(
+        Getter.register_special("cube", (value) => Math.pow(value, 3))
+    ).toStrictEqual(false);
+});

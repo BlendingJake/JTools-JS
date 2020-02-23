@@ -1,20 +1,28 @@
-import { Getter } from "./getter.js";
+import { Getter } from "./getter";
 
 const MISSING = "__missing__";
 const _full_replacement = new RegExp("{{\\s*" + Getter.full_regex() + "\\s*}}");
 
 export class Formatter {
-    constructor(spec, fallback=null) {
+    private readonly spec: string;
+    private readonly fallback: any;
+    private failed: boolean;
+
+    constructor(spec: string, fallback: any=null) {
         this.spec = spec;
         this.fallback = fallback;
         this.failed = false;
     }
 
-    format(item) {
+    single(item: any): string | any {
         return this._replace(this.spec, item);
     }
 
-    _replace(spec, item) {
+    many(items: any[]): (string | any)[] {
+        return items.map(item => this._replace(this.spec, item));
+    }
+
+    _replace(spec: string, item: any): string | any {
         let updated = spec.replace(_full_replacement, (match, ...args) => {
             return this._replacer(args, item);
         });
@@ -30,7 +38,7 @@ export class Formatter {
         }
     }
 
-    _replacer(match, item) {
+    _replacer(match: any[], item: any): string {
         let field = match[0];
         if (match[2] !== "") {
             field += match[2];
