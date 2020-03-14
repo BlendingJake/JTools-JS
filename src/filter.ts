@@ -1,4 +1,4 @@
-import { Getter } from "./getter";
+import { Query } from "./query";
 
 type Operator = '>' | '<' | '>=' | '<=' | '==' | '!=' | '===' | '!==' | 'in' | '!in' |
     'contains' | '!contains' | 'interval' | '!interval' | 'startswith' |
@@ -69,6 +69,20 @@ export class Condition {
 
     filters(): ConditionType[] {
         return this.output;
+    }
+}
+
+class ValueLessCondition {
+    private field: string;
+    private op: Operator;
+
+    constructor(field: string, op: Operator) {
+        this.field = field;
+        this.op = op;
+    }
+
+    value(value: any) {
+        return new Condition(this.field, this.op, value);
     }
 }
 
@@ -149,6 +163,10 @@ class _Key {
     not_present(): Condition {
         return new Condition(this.field, "!present", null);
     }
+
+    operator(op: Operator): ValueLessCondition {
+        return new ValueLessCondition(this.field, op);
+    }
 }
 
 export function Key(field: string): _Key {
@@ -216,33 +234,39 @@ const _filters: FilterFunction = {
     "!present": (field_value, _) => { return field_value === null || field_value === undefined; }
 };
 
+const MISSING = "__missing__";
+
 export class Filter {
     private readonly filters: ConditionType[];
-    private readonly getters: {[key: string]: Getter};
+    private readonly queries: {[key: string]: Query};
     private readonly empty_filters_response: boolean;
+    private readonly missing_field_response: boolean;
 
-    constructor(filters: Condition | ConditionType[], params: {empty_filters_response?: boolean}={}) {
+    constructor(filters: Condition | ConditionType[], empty_filters_response: boolean=true, 
+        missing_field_response: boolean=false) {
+        this.empty_filters_response = empty_filters_response;
+        this.missing_field_response = missing_field_response;
+
         if (filters instanceof Condition) {
             this.filters = filters.filters();
         } else {
             this.filters = filters;
         }
 
-        this.getters = this._preprocess(this.filters);
-        this.empty_filters_response = params.empty_filters_response || true;
+        this.queries = this._preprocess(this.filters);
     }
 
-    _preprocess(filters: ConditionType[]): {[key: string]: Getter} {
+    _preprocess(filters: ConditionType[]): {[key: string]: Query} {
         let out = {};
         filters.forEach(f => {
-            if ((f as ConditionType[]).length !== undefined) {
+            if (Array.isArray(f)) {
                 out = {...out, ...this._preprocess((f as ConditionType[]))};
             } else if ((f as OrCondition).or !== undefined) {
                 out = {...out, ...this._preprocess((f as OrCondition).or)};
             } else if ((f as NotCondition).not !== undefined) {
                 out = {...out, ...this._preprocess((f as NotCondition).not)};
             } else if (out[(f as FilterCondition).field] === undefined) {
-                out[(f as FilterCondition).field] = new Getter((f as FilterCondition).field);
+                out[(f as FilterCondition).field] = new Query((f as FilterCondition).field, MISSING);
             }
         });
 
@@ -255,8 +279,9 @@ export class Filter {
         }
 
         let overall = null;
+        let c: boolean;
+        let query_result: any;
         for (let f of filters) {
-            let c;
             if ((f as ConditionType[]).length !== undefined) {
                 c = this._filter(item, (f as ConditionType[]));
             } else if ((f as OrCondition).or !== undefined) {
@@ -264,10 +289,15 @@ export class Filter {
             } else if ((f as NotCondition).not !== undefined) {
                 c = !this._filter(item, (f as NotCondition).not);
             } else {
-                c = _filters[(f as FilterCondition).operator](
-                    this.getters[(f as FilterCondition).field].single(item),
-                    (f as FilterCondition).value
-                );
+                query_result = this.queries[(f as FilterCondition).field].single(item);
+                if (query_result === MISSING && (f as FilterCondition).operator !== 'present' && (f as FilterCondition).operator !== '!present') {
+                    c = this.missing_field_response;
+                } else {
+                    c = _filters[(f as FilterCondition).operator](
+                        query_result,
+                        (f as FilterCondition).value
+                    );
+                }                
             }
 
             if (overall === null) {

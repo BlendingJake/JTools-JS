@@ -5,14 +5,14 @@ test("nested capital prefix", () => {
     let data = {env: {VERSION: "1.0.0"}};
     let prefix = "build/";
     expect(
-        new Formatter(prefix + "{{env.VERSION}}").single(data)
+        new Formatter(prefix + "@env.VERSION").single(data)
     ).toStrictEqual(`${prefix}${data.env.VERSION}`);
 });
 
 test("nested capital", () => {
     let data = {env: {VERSION: "1.0.0"}};
     expect(
-        new Formatter("{{env.VERSION}}").single(data)
+        new Formatter("@env.VERSION").single(data)
     ).toStrictEqual(data.env.VERSION);
 });
 

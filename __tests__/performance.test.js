@@ -1,8 +1,8 @@
-import { Getter, Filter, Key } from "../dist";
+import { Query, Filter, Key } from "../dist";
 let large_data = require("./data/10000.json");
 
-test("getter reuse", () => {
-    let times = 100;
+test("query reuse", () => {
+    let times = 20;
     let start;
     let sum = 0;
 
@@ -10,12 +10,12 @@ test("getter reuse", () => {
         start = Date.now();
 
         large_data.forEach(item => {
-            new Getter('email.$split("@").1.$split(".").0').single(item);
+            new Query('email.$split("@").1.$split(".").0').single(item);
         });
         let recreate_time = Date.now() - start;
 
         start = Date.now();
-        let getter = new Getter('email.$split("@").1.$split(".").0');
+        let getter = new Query('email.$split("@").1.$split(".").0');
         large_data.forEach(item => {
             getter.single(item);
         });
@@ -24,12 +24,12 @@ test("getter reuse", () => {
         sum += recreate_time / reuse_time;
     }
 
-    console.log(sum / times, "x faster to reuse Getter then recreate");
+    console.log(sum / times, "x faster to reuse Query then recreate");
     expect(sum / times).toBeGreaterThan(5);
 });
 
 test("filter reuse", () => {
-    let times = 100;
+    let times = 20;
     let start;
     let sum = 0;
 

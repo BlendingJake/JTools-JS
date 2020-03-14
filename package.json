@@ -1,9 +1,10 @@
 {
   "name": "@blending_jake/jtools",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "A JavaScript package that aids filtering, formatting, and transforming JSON-like objects",
   "scripts": {
     "test": "jest --collect-coverage --no-cache",
+    "antlr4ts": "antlr4ts -o src/grammar src/grammar/JQL.g4",
     "compile": "tsc"
   },
   "homepage": "https://github.com/BlendingJake/JTools-JS",
@@ -15,11 +16,13 @@
   "devDependencies": {
     "@babel/core": "^7.8.4",
     "@babel/preset-env": "^7.8.4",
+    "antlr4ts-cli": "^0.5.0-alpha.3",
     "babel-jest": "^25.1.0",
     "jest": "^25.1.0",
     "typescript": "^3.8.2"
   },
   "dependencies": {
+    "antlr4ts": "^0.5.0-alpha.3",
     "moment": "^2.24.0"
   }
 }

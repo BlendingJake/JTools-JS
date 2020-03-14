@@ -1,4 +1,4 @@
-import { Getter } from "./getter";
+import { Query } from "./query";
 export class Condition {
     constructor(field, operator, value) {
         this.output = [
@@ -41,6 +41,15 @@ export class Condition {
     }
     filters() {
         return this.output;
+    }
+}
+class ValueLessCondition {
+    constructor(field, op) {
+        this.field = field;
+        this.op = op;
+    }
+    value(value) {
+        return new Condition(this.field, this.op, value);
     }
 }
 class _Key {
@@ -100,6 +109,9 @@ class _Key {
     }
     not_present() {
         return new Condition(this.field, "!present", null);
+    }
+    operator(op) {
+        return new ValueLessCondition(this.field, op);
     }
 }
 export function Key(field) {
@@ -165,31 +177,33 @@ const _filters = {
     "present": (field_value, _) => { return field_value !== null && field_value !== undefined; },
     "!present": (field_value, _) => { return field_value === null || field_value === undefined; }
 };
+const MISSING = "__missing__";
 export class Filter {
-    constructor(filters, params = {}) {
+    constructor(filters, convert_ints = true, empty_filters_response = true, missing_field_response = false) {
+        this.empty_filters_response = empty_filters_response;
+        this.missing_field_response = missing_field_response;
         if (filters instanceof Condition) {
             this.filters = filters.filters();
         }
         else {
             this.filters = filters;
         }
-        this.getters = this._preprocess(this.filters);
-        this.empty_filters_response = params.empty_filters_response || true;
+        this.queries = this._preprocess(this.filters, convert_ints);
     }
-    _preprocess(filters) {
+    _preprocess(filters, convert_ints = true) {
         let out = {};
         filters.forEach(f => {
-            if (f.length !== undefined) {
-                out = Object.assign(Object.assign({}, out), this._preprocess(f));
+            if (Array.isArray(f)) {
+                out = Object.assign(Object.assign({}, out), this._preprocess(f, convert_ints));
             }
             else if (f.or !== undefined) {
-                out = Object.assign(Object.assign({}, out), this._preprocess(f.or));
+                out = Object.assign(Object.assign({}, out), this._preprocess(f.or, convert_ints));
             }
             else if (f.not !== undefined) {
-                out = Object.assign(Object.assign({}, out), this._preprocess(f.not));
+                out = Object.assign(Object.assign({}, out), this._preprocess(f.not, convert_ints));
             }
             else if (out[f.field] === undefined) {
-                out[f.field] = new Getter(f.field);
+                out[f.field] = new Query(f.field, convert_ints, MISSING);
             }
         });
         return out;
@@ -199,8 +213,9 @@ export class Filter {
             filters = this.filters;
         }
         let overall = null;
+        let c;
+        let query_result;
         for (let f of filters) {
-            let c;
             if (f.length !== undefined) {
                 c = this._filter(item, f);
             }
@@ -211,7 +226,13 @@ export class Filter {
                 c = !this._filter(item, f.not);
             }
             else {
-                c = _filters[f.operator](this.getters[f.field].single(item), f.value);
+                query_result = this.queries[f.field].single(item);
+                if (query_result === MISSING && f.operator !== 'present' && f.operator !== '!present') {
+                    c = this.missing_field_response;
+                }
+                else {
+                    c = _filters[f.operator](query_result, f.value);
+                }
             }
             if (overall === null) {
                 overall = c;
