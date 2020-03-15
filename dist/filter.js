@@ -174,12 +174,12 @@ const _filters = {
     "!interval": (field_value, value) => { return field_value < value[0] || value[1] < field_value; },
     "startswith": (field_value, value) => { return field_value.startsWith(value); },
     "endswith": (field_value, value) => { return field_value.endsWith(value); },
-    "present": (field_value, _) => { return field_value !== null && field_value !== undefined; },
-    "!present": (field_value, _) => { return field_value === null || field_value === undefined; }
+    "present": (field_value, _) => { return field_value !== null && field_value !== undefined && field_value !== MISSING; },
+    "!present": (field_value, _) => { return field_value === null || field_value === undefined || field_value === MISSING; }
 };
 const MISSING = "__missing__";
 export class Filter {
-    constructor(filters, convert_ints = true, empty_filters_response = true, missing_field_response = false) {
+    constructor(filters, empty_filters_response = true, missing_field_response = false) {
         this.empty_filters_response = empty_filters_response;
         this.missing_field_response = missing_field_response;
         if (filters instanceof Condition) {
@@ -188,22 +188,22 @@ export class Filter {
         else {
             this.filters = filters;
         }
-        this.queries = this._preprocess(this.filters, convert_ints);
+        this.queries = this._preprocess(this.filters);
     }
-    _preprocess(filters, convert_ints = true) {
+    _preprocess(filters) {
         let out = {};
         filters.forEach(f => {
             if (Array.isArray(f)) {
-                out = Object.assign(Object.assign({}, out), this._preprocess(f, convert_ints));
+                out = Object.assign(Object.assign({}, out), this._preprocess(f));
             }
             else if (f.or !== undefined) {
-                out = Object.assign(Object.assign({}, out), this._preprocess(f.or, convert_ints));
+                out = Object.assign(Object.assign({}, out), this._preprocess(f.or));
             }
             else if (f.not !== undefined) {
-                out = Object.assign(Object.assign({}, out), this._preprocess(f.not, convert_ints));
+                out = Object.assign(Object.assign({}, out), this._preprocess(f.not));
             }
             else if (out[f.field] === undefined) {
-                out[f.field] = new Query(f.field, convert_ints, MISSING);
+                out[f.field] = new Query(f.field, MISSING);
             }
         });
         return out;

@@ -28,9 +28,13 @@ const _specials: {[key: string]: SpecialFunction} = {
     wildcard: (value, nxt, just_field=true) => {
         let out = [];
         Object.keys(value).forEach(key => {
-            if (value[key][nxt] !== undefined) {
-                out.push((just_field) ? value[key][nxt] : value[key]);
-            }
+            try {
+                if (value[key][nxt] !== undefined) {
+                    out.push((just_field) ? value[key][nxt] : value[key]);
+                }
+            } catch (TypeError) {
+
+            }           
         });
         return out;
     },
@@ -98,11 +102,15 @@ const _specials: {[key: string]: SpecialFunction} = {
     },
     join: (value, sep=", ") => { return value.join(sep); },
     index: (value, index, fallback=null) => {
-        if (value[index] === undefined) {
+        try {
+            if (value[index] === undefined) {
+                return fallback;
+            } else {
+                return value[index];
+            }
+        } catch (TypeError) {
             return fallback;
-        } else {
-            return value[index];
-        }
+        }       
     },
     range: (value, start, end=undefined) => {
         if (end !== undefined) {
@@ -179,11 +187,15 @@ export class Query {
         query.parts.forEach(part => {
             if (part instanceof JQLField) {
                 if (value !== this.fallback) {
-                    if (value[part.field] !== undefined) {
-                        value = value[part.field];
-                    } else {
+                    try {
+                        if (value[part.field] !== undefined) {
+                            value = value[part.field];
+                        } else {
+                            value = this.fallback;
+                        }
+                    } catch (TypeError) {
                         value = this.fallback;
-                    }
+                    }                
                 }
             }  else if (part instanceof JQLSpecial) {
                 value = _specials[part.special](

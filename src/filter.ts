@@ -230,8 +230,8 @@ const _filters: FilterFunction = {
     "startswith": (field_value, value) => { return field_value.startsWith(value); },
     "endswith": (field_value, value) => { return field_value.endsWith(value); },
 
-    "present": (field_value, _) => { return field_value !== null && field_value !== undefined; },
-    "!present": (field_value, _) => { return field_value === null || field_value === undefined; }
+    "present": (field_value, _) => { return field_value !== null && field_value !== undefined  && field_value !== MISSING; },
+    "!present": (field_value, _) => { return field_value === null || field_value === undefined || field_value === MISSING; }
 };
 
 const MISSING = "__missing__";

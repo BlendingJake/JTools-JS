@@ -295,7 +295,7 @@ test("strings", () => {
 });
 
 test("list", () => {
-    let data = {a: [43.2, -34, 54.2], b: {c: 4}};
+    let data = {a: [43.2, -34, 54.2], b: {c: 4}, c: null};
     expect(
         new Query("a.$sum").single(data)
     ).toStrictEqual(data.a[0] + data.a[1] + data.a[2]);
@@ -307,6 +307,14 @@ test("list", () => {
     expect(
         new Query("a.$index(2)").single(data)
     ).toStrictEqual(data.a[2]);
+
+    expect(
+        new Query("a.$index(4, 'nope')").single(data)
+    ).toStrictEqual('nope');
+
+    expect(
+        new Query("c.$index(2, 'nada')").single(data)
+    ).toStrictEqual('nada');
 
     expect(
         new Query('b.$index("c")').single(data)
@@ -397,4 +405,68 @@ test("nested query", () => {
     expect(
         new Query('latitude.$wrap("Lat=", @longitude.$prefix(" & Lon="))').single(small_data[0])
     ).toStrictEqual(`Lat=${small_data[0].latitude} & Lon=${small_data[0].longitude}`);
+});
+
+test("inject", () => {
+    let Q = (q) => { return new Query(q).single({}); };
+    
+    expect(Q("$inject(3)")).toStrictEqual(3);
+    expect(Q("$inject(3.14)")).toStrictEqual(3.14);
+    expect(Q("$inject(true)")).toStrictEqual(true);
+    expect(Q("$inject(false)")).toStrictEqual(false);
+    expect(Q("$inject(null)")).toStrictEqual(null);
+    expect(Q("$inject('null')")).toStrictEqual('null');
+    expect(Q('$inject("null")')).toStrictEqual('null');
+
+    expect(Q('$inject([])')).toStrictEqual([]);
+    expect(Q('$inject([1, "2"])')).toStrictEqual([1, "2"]);
+    expect(Q('$inject({1, "2"})')).toStrictEqual(new Set([1, "2"]));
+    expect(Q('$inject({"bob": "rick"})')).toStrictEqual({bob: "rick"});
+
+    expect(Q('$inject([{"bob": "rick"}, false])')).toStrictEqual([{bob: "rick"}, false]);
+});
+
+test("wildcard", () => {
+    let data = {
+        "a": {"key": 8, "other": 8},
+        "b": {"key": 4},
+        "c": {"value": 5},
+        "d": 0,
+        "e": "daf",
+        "f": null,
+        "g": ["john", "susan", "carl"],
+        "h": true
+    };
+    let Q = (q) => { return new Query(q).single(data); };
+
+    expect(Q("$wildcard('key')")).toStrictEqual([data.a.key, data.b.key]);
+    expect(Q("$wildcard('key', false)")).toStrictEqual([data.a, data.b]);
+    expect(Q("$wildcard(0)")).toStrictEqual([data.e[0], data.g[0]]);
+    expect(Q("$wildcard(0, false)")).toStrictEqual([data.e, data.g]);
+});
+
+test("remove_nulls", () => {
+    expect(
+        new Query("$remove_nulls").single([1, null, "true", undefined])
+    ).toStrictEqual([1, "true"]);
+
+    expect(
+        new Query("$remove_nulls").single([1, "true"])
+    ).toStrictEqual([1, "true"]);
+});
+
+test("no query", () => {
+    expect(
+        new Query("", 'nope').single({})
+    ).toStrictEqual('nope');
+
+    expect(
+        new Query("@invalid", 'nope').single({})
+    ).toStrictEqual('nope');
+});
+
+test('null field', () => {
+    expect(
+        new Query('n.a', 'nope').single({n: null})
+    ).toStrictEqual('nope');
 });

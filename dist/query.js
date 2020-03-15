@@ -26,8 +26,12 @@ const _specials = {
     wildcard: (value, nxt, just_field = true) => {
         let out = [];
         Object.keys(value).forEach(key => {
-            if (value[key][nxt] !== undefined) {
-                out.push((just_field) ? value[key][nxt] : value[key]);
+            try {
+                if (value[key][nxt] !== undefined) {
+                    out.push((just_field) ? value[key][nxt] : value[key]);
+                }
+            }
+            catch (TypeError) {
             }
         });
         return out;
@@ -92,11 +96,16 @@ const _specials = {
     },
     join: (value, sep = ", ") => { return value.join(sep); },
     index: (value, index, fallback = null) => {
-        if (value[index] === undefined) {
-            return fallback;
+        try {
+            if (value[index] === undefined) {
+                return fallback;
+            }
+            else {
+                return value[index];
+            }
         }
-        else {
-            return value[index];
+        catch (TypeError) {
+            return fallback;
         }
     },
     range: (value, start, end = undefined) => {
@@ -135,12 +144,11 @@ const _specials = {
     }
 };
 export class Query {
-    constructor(query, convert_ints = true, fallback = null) {
+    constructor(query, fallback = null) {
         this.multiple = !(typeof query === "string" || query instanceof String || query instanceof JQLQuery);
         //@ts-ignore We know from the line above whether this is going to be a single string or array of strings
         this.queries = (this.multiple === true) ? query : [query];
         this.fallback = fallback;
-        this.convert_ints = convert_ints;
         this.parts = [];
         this.queries.forEach((f) => {
             if (f instanceof JQLQuery) {
@@ -148,7 +156,7 @@ export class Query {
             }
             else {
                 try {
-                    let p = new JQLQueryBuilder(f, this.convert_ints).get_built_query();
+                    let p = new JQLQueryBuilder(f).get_built_query();
                     this.parts.push(p);
                 }
                 catch (JQLParseError) {
@@ -172,10 +180,15 @@ export class Query {
         query.parts.forEach(part => {
             if (part instanceof JQLField) {
                 if (value !== this.fallback) {
-                    if (value[part.field] !== undefined) {
-                        value = value[part.field];
+                    try {
+                        if (value[part.field] !== undefined) {
+                            value = value[part.field];
+                        }
+                        else {
+                            value = this.fallback;
+                        }
                     }
-                    else {
+                    catch (TypeError) {
                         value = this.fallback;
                     }
                 }

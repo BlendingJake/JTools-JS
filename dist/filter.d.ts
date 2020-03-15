@@ -56,8 +56,8 @@ export declare class Filter {
     private readonly queries;
     private readonly empty_filters_response;
     private readonly missing_field_response;
-    constructor(filters: Condition | ConditionType[], convert_ints?: boolean, empty_filters_response?: boolean, missing_field_response?: boolean);
-    _preprocess(filters: ConditionType[], convert_ints?: boolean): {
+    constructor(filters: Condition | ConditionType[], empty_filters_response?: boolean, missing_field_response?: boolean);
+    _preprocess(filters: ConditionType[]): {
         [key: string]: Query;
     };
     _filter(item: any, filters?: ConditionType[], oring?: boolean): boolean;

@@ -5,9 +5,8 @@ import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker";
 import { InputMismatchException } from "antlr4ts";
 import { JQLLexer } from "./JQLLexer";
 class JQLQueryListener {
-    constructor(convert_ints = true) {
+    constructor() {
         this.stack = [];
-        this.convert_ints = convert_ints;
         this.root = null;
     }
     enterQuery(ctx) {
@@ -26,12 +25,6 @@ class JQLQueryListener {
     exitQuery_field(ctx) {
         let f = new JQLField();
         f.set_field(ctx.text);
-        if (this.convert_ints === true) {
-            let fi = parseInt(f.field.toString());
-            if (!isNaN(fi)) {
-                f.set_field(fi);
-            }
-        }
         this.stack[this.stack.length - 1].add(f);
     }
     enterSpecial(ctx) {
@@ -111,8 +104,8 @@ class JQLQueryListener {
     }
 }
 class JQLMultiQueryListerner extends JQLQueryListener {
-    constructor(convert_ints = true) {
-        super(convert_ints);
+    constructor() {
+        super();
     }
     enterJql_multi_query(ctx) {
         this.root = new JQLMultiQuery();
@@ -149,8 +142,7 @@ class JQLCustomParser extends JQLParser {
     }
 }
 class Builder {
-    constructor(text, convert_ints = true) {
-        this.convert_ints = convert_ints;
+    constructor(text) {
         this.text = text;
         this.input_stream = new ANTLRInputStream(this.text);
         this.lexer = new JQLLexer(this.input_stream);
@@ -159,10 +151,10 @@ class Builder {
     }
 }
 export class JQLQueryBuilder extends Builder {
-    constructor(text, convert_ints = true) {
-        super(text, convert_ints);
+    constructor(text) {
+        super(text);
         let tree = this.parser.jql_query();
-        this.listener = new JQLQueryListener(this.convert_ints);
+        this.listener = new JQLQueryListener();
         this.walker = ParseTreeWalker.DEFAULT.walk(this.listener, tree);
     }
     get_built_query() {
@@ -170,10 +162,10 @@ export class JQLQueryBuilder extends Builder {
     }
 }
 export class JQLMultiQueryBuilder extends Builder {
-    constructor(text, convert_ints = true) {
-        super(text, convert_ints);
+    constructor(text) {
+        super(text);
         let tree = this.parser.jql_multi_query();
-        this.listener = new JQLMultiQueryListerner(this.convert_ints);
+        this.listener = new JQLMultiQueryListerner();
         this.walker = ParseTreeWalker.DEFAULT.walk(this.listener, tree);
     }
     get_built_query() {
