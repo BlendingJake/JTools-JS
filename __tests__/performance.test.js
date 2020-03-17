@@ -2,7 +2,7 @@ import { Query, Filter, Key, Formatter } from "../dist";
 let large_data = require("./data/10000.json");
 
 test("query reuse", () => {
-    let times = 10;
+    let times = 5;
     let start;
     let sum = 0;
 
@@ -29,7 +29,7 @@ test("query reuse", () => {
 });
 
 test("filter reuse", () => {
-    let times = 10;
+    let times = 5;
     let start;
     let sum = 0;
 
@@ -60,7 +60,7 @@ test("filter reuse", () => {
 });
 
 test("formatter reuse", () => {
-    let times = 10;
+    let times = 5;
     let start;
     let sum = 0;
 

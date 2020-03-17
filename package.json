@@ -1,7 +1,7 @@
 {
   "name": "@blending_jake/jtools",
   "version": "1.1.0",
-  "description": "A JavaScript package that aids filtering, formatting, and transforming JSON-like objects",
+  "description": "A JavaScript package that aids advanced querying, filtering, and formatting of JSON-like objects",
   "scripts": {
     "test": "jest --collect-coverage --no-cache",
     "antlr4ts": "antlr4ts -o src/grammar src/grammar/JQL.g4",

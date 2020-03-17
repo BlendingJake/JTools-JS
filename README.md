@@ -1,125 +1,190 @@
 # @blending_jake/jtools
->JTools is a robust library for interacting with JSON-like objects,
->focusing on providing an easy way to filter, 
->format, and extract fields from JSON-like data.
+
+>JTools is a robust library for interacting with JSON-like objects:
+>providing the ability to quickly query, format, and filter JSON-like data.
+>
+>There are three main components:
+
+* `Query`: Extract and transform the value of nested fields.
+  * `new Query("data.timestamp.$parse_timestamp.$attr('year')").many(items)`
+* `Filter`: Combine the querying capabilities of `Query` with the ability
+ to define filtering conditions to find just the elements you want.
+  * `mew Filter(Key("data.timestamp.$parse_timestamp.$attr('year')").gt(2015)).many(data)`
+* `Formatter`: Take multiple queries and format them into a string
+  * `new Formatter("Item @data.id was released in @data.timestamp.$parse_timestamp.$call('year')").single(data[0])`
 >
 >A companion to the Python version of this package: JTools (https://pypi.org/project/jtools/).
 >The Python version supports almost the exact same specials, filters, and formatting specification, with the
->goal of making it a seamless experience to go from accessing/filtering/formatting in Python to JavaScript and back.
->The joint development is why `!in` is accessed with the `.in_` method even in JavaScript, despite `in` not being a 
->reserved keyword in JavaScript as it is in Python. The goal is to make the two versions work as identically as 
->possible.
+>goal of making it a seamless experience to go from querying/filtering/formatting in JavaScript to Python and back.
 >
 >This module is written originally in TypeScript and declaration files are included in the distribution.
 >The module is transpiled to ES6.
 
 ##### Difference from JTools-Py
+
  * In JTools-Py, `==` and `===` will behave the same, as well as `!=` and `!==`. 
  * JTools-Py uses the `datetime` package, while this version uses `moment`
  * JTools-Py replicates JavaScript's default lack of differentiation between `item[0]` and `item["0"]` by default. 
- However, this can be changed in the Python version by setting `Getter(..., convert_ints=False)`. 
+ However, this can be changed in the Python version by setting `Query(..., convert_ints=False)`. 
  If that argument is set to `False` in Python, then `item.0` would work on `{"item": {"0": ...}}`, 
- but not on `{"item": {0: ...}}`. The JavaScript version essentially always has `convert_ints=True`. 
+ but not on `{"item": {0: ...}}`. The JavaScript version essentially always has `convert_ints=True`.
 
-## Changelog
- * `1.0.6`
-   * Migrate to TypeScript, so a declaration file is now included in the distribution
-   * Add this `README`
-   * Add `===` and `!==` filters for strict equality checking. The methods `seq` and `sne` have
-   been added to `Key` to correspond with the new filters.
-   * Rename `null` -> `!present` and `!null` -> `present`. Corresponding methods have been renamed
-   to `not_present` and `present`. This filter will catch values that are `null` or `undefined`.
-   * Make membership filters (`in`, `contains`, `!in` and `!contains`) work properly with 
-   strings, arrays, associative arrays, and sets.
-   * Remove `$datetime`. See below for replacement.
-   * Add `$call` and `$attr` for calling a function and accessing an attribute. Can be used to replace
-   `$datetime` functionality.
-   * Remove `Formatter.format` and add `Formatter.single` and `Formatter.many` to be consistent across
-   other classes and support formatting arrays of items.
-   * Add more tests to increase coverage and do basic performance testing
-
+## Recent Changes
+ * `1.1.0`
+   * Rename `Getter` to `Query` to more accurately describe what the class does
+   * Migrate queries to use `JQL`
+     * The migration opens the door to nested queries in `Query`, allowing queries, prefixed with `@` to be used
+     as arguments to specials, or even as values in the supported argument data structures
+     * Special arguments are no longer parsed as `JSON`, allowing features like sets, query nesting, and support
+     for single and double quoted strings.
+     * Formatter no longer uses `{{}}` to surround queries. Instead, all queries must be prefixed with `@`, so
+     `"{{name}} {{age}}"` -> `"@name @age"`. `@@` must be used to get a literal `@` in a formatted string:
+     `"bob@@gmail.com"` -> `"bob@gmail.com"`
+     * Formatter got about a 2x performance boost
+   * Added `$wrap(prefix, suffix)` to combine `$prefix` and `$suffix`
+   * Added `$remove_nulls`
+   * Added `$lookup(map, fallback=None)`
+   * Added `$wildcard(next, just_value=True)`, which allows level of nesting to be "skipped", such that a list
+   of sub-values where `next` is present
+   * Added a `fallback` argument to `$index`
+   * Added `$print` to display the current value in the query
+   * Added `$inject` to allow any valid argument value to be injected into the query to be
+  accessed and transformed by subsequent fields and specials
+  
 ## Glossary
  * [`Installation`](#install)
- * [`Getter`](#getter)
+ * [`JQL`](#jql)
+ * [`Query`](#query)
    * [`Specials`](#specials)
- * [`Formatter`](#formatter)
  * [`Filter`](#filter)
    * [`Key`](#key)
    * [`Condition`](#condition)
+ * [`Formatter`](#formatter)
  * [`Performance`](#performance)
+ * [`Changelog`](#changelog)
    
 ## <a name="install">Installation</a>
 `npm i @blending_jake/jtools`
 ```ecmascript 6
 // import
-import { Getter, Filter, Key, Condition, Formatter } from "@blending_jake/jtools";
+import { Query, Filter, Key, Condition, Formatter } from "@blending_jake/jtools";
 ```
 
-## <a name="getter">Getter</a>
->`Getter` on the surface is very simple: you give it a field query string (or several)
->and it returns the value (or values) at that path(s) from a given an item or list of items. 
->Example: `new Getter("name").single({name: "John"})` will return `"John"`.
->However, there are many more cool features, like supporting dot-notation,
->having the ability to transform values with specials, and even the ability 
->to drill down into lists. Below is a fuller list of the features.
+## <a name="jql">`JQL`</a>
+>`JQL` or the `JSON Query Language` is a custom built query language for `JTools` which supports powerful features
+>like accessing nested fields, transforming values, and even using nested queries as arguments. 
+>The basic format of the language is: 
+```
+(<field> | $<special>) (. (<field> | $<special>))*
+EX: 'data', 'data.timestamp', 'data.$split', '$split.0'
+```
+#### field
+A field is just a value that can be used as an index, like a string or integer key for a map/dict or an integer for an array. JavaScript has very loose type-checking between strings
+and integers, so either can essentially work in place of the other when indexing.
+Fields cannot contain ` `, `.`, or ` ( `. Instead, `$index("<field>")` can be used
+to access fields with those prohibited characters. 
 
- * `.single(item)` can be used to get field(s) from a single item, or 
- `.many(items)` can be used to get field(s) from a list of items
- 
- * The `Getter` constructor accepts a second argument, `fallback`, which is `null` by default.
- The `fallback` value will be returned if the any part of the query string did not exist.
- A different fallback value can be specified with `new Getter(field(s), <fallback>)`
- 
- * Multiple fields can be retrieved at once by passing a list of query strings, like
- `new Getter(["name", "age"])`. Resulting values from `.single` and `.many` will be
- lists of corresponding length.
- 
- * Dot-notation is supported and can be used to access nested values. For
- example, `meta.id` can be used to get the `id` field from the item
- `{meta: {id: 1}}`, resulting in the value of `1`. 
- 
- * Integer paths can be used to index lists. This allows paths like `friends.0`.
- 
- * Specials can be can be used to transform the queried value, and multiple
- specials can be used back to back, with the output of one being used in the next. 
- Specials are included in the field path and prefixed with `$`. For example, 
- if you have `{long_number: 3.1415926}`, you can use `long_number.$round`
- to round it to `2` decimal places, returning `3.14`. 
- 
- * Arguments can be passed into these specials! For example, if you have
- `{email: "john_doe@gmail.com"}` and you want to get just the 
- email provider, then `email.$split("@").$index(-1)` can be used, which will
- return `gmail.com`. Equally, `email.$split("@").1` could be used. 
- 
- * Arguments can be anything that can be represented in JSON. 
- **Note: JSON requires strings to be double-quoted, so 
- `email.$split('@')` would not work and `email.$split("@")` would have to be used instead.**
+#### $special
+A special is a function that is applied to the value that has been queried so far. There is a complete list of specials
+[here](#specials). These specials can be passed arguments, which is one of the most powerful features
+of `JQL`. The syntax is similar to most programming languages: `$<special>(<value>(, <value>)*)`. Just to note, `$<special>()`
+is valid, as is `$<special>`. Many of the specials don't require any arguments, or have default values, allowing
+the parenthesis to be left off.
+
+##### value
+A `<value>` can be:
+```
+[] or [<value>(, <value>)*] - List
+{} or {<value>(, <value>)*} - Set
+{:} or {<key>: <value>(, <key>: <value>)*} - Map/Dict/Object (see below for <key> spec)
+Integer
+Float
+String w/ '' or ""
+true
+false
+null
+@<query> - Yep! Nested queries!
+
+<key>:
+    @<query>    
+    Integer
+    Float
+    String
+    true
+    false
+    null
+``` 
+As shown above, values and queries can be nested, so `[[1, 2], ["bob"], {"Ann", 'Ralph'}, {'key': 4, 23: 5}]`
+is valid. Additionally, the support for nesting queries is extremely powerful and allows for queries like:
+`item.tag.$lookup(@table.colors)`, which, for `{"item": {"tag": "product"}, "table": {"colors": {"product": "red"}}}`
+results in `"red"`
+
+## <a name="query">Query</a>
+>`Query` takes the power of `JQL` and puts it into practice querying and transforming values
+>in JSON-like data. 
+
+### `new Query(query, fallback=None)`
+* `query`: `str | List[str]` The field or fields to query
+* `fallback`: The value that will result if a non-existent field is queried
+
+#### `.single(item)`
+>Take a single item and query it using the query(ies) provided
+>
+>`Query(field).single(...) -> result`
+>
+>`Query([field, field, ...]).single(...) -> [result, result, ...]`
+
+#### `.many(items)`
+>Take a list of items, and query each item using the query(ies) provided
+>
+>`Query(field).many(...) -> [result, result, ...]`
+>
+>`Query([field, field, ...]).many(...) -> [[result, result, ...], [result, result, ...], ...]`
+
+### Notes
+ * Fields can be indexed after specials, so `$split.0` is completely valid
  
  * You don't have to use `()` at the end of a special if there aren't any 
  arguments, or the default arguments are acceptable.
  
- * More specials can be added by using the static method `.register_special()` 
- like so: `Getter.register_special(<name>, <func>)`. The function should take
+ * More specials can be added by using the class attribute `.register_special()` 
+ like so: `Query.register_special(<name>, <func>)`. The function should take
  at least one argument, which is the current value in the query string: `(value, ...args) => { ... }`
  
 #### <a name="specials">Specials</a>
 General
-  * `$length -> int`
+  * `$length -> number`
+  * `$lookup(map: dict, fallback=None) -> any`: Lookup the current value in the provided map/dict 
+  * `$inject(value: any) -> any`: Inject a value into the query
+  * `$print -> any`: Print the current query value before continuing to pass that value along
   
 Maps
-  * `$keys -> []`
-  * `$values -> []`
+ * `$keys -> any[]`
+  * `$values -> any[]`
   * `$items -> [key, value][]`
+  * `$wildcard(next, just_value=true) -> any[]`: On a given map or list, go through all values and see if `next` is
+  a defined field. If it is, then return just the value of `next` on that item, if `just_value=true`, or the entire 
+  item otherwise. This special allows a nested field to be extracted across multiple items where it it present. 
+  For example: 
+```javascript
+let data = {
+    "a": {"tag": "run"},
+    "b": {"tag": "to-do", "other": "task"},
+    "meta": None
+}
+new Query('$wildcard("tag")').single(data)  // => ["run", "to-do"]
+new Query('$wildcard("tag", false)').single(data) // => [{"tag": "run"}, {"tag": "to-do", "other": "task"}]
+```
   
 Type Conversions
   * `$set -> Set`
   * `$float -> number`
-  * `$string -> string`
+  * `$string -> str`
   * `$int -> number`
-  * `$not -> boolean`: Returns `!value`
-  * `$fallback(fallback) -> value || fallback`
-  * `$ternary(if_true, if_false, strict=false) -> Any`: Return `if_true` if the value is `truish`, otherwise,
-  return `if_false`. Pass `true` for `strict` if the value must be `true` and not just `truish`.
+  * `$not -> bool`: Returns `!value`
+  * `$fallback(fallback) -> value or fallback`: If the value is None, then it will be replaced with `fallback`.
+  * `$ternary(if_true, if_false, strict=false) -> any`: Return `if_true` if the value is `truish`, otherwise,
+  return `if_false`. Pass `true` for `strict` if the value must be `True` and not just `truish`.`truish`.
   
 Datetime 
   * `$parse_timestamp -> moment`: Take a Unix timestamp in seconds and return a corresponding moment object
@@ -145,6 +210,7 @@ Math / Numbers
 Strings
   * `$prefix(prefix) -> string`: Prefix the value with the specified string
   * `$suffix(suffix) -> string`: Concatenate a string to the end of the value
+  * `$wrap(prefix, suffix) -> str`: Wrap a string with a prefix and suffix. Combines features of above two specials.
   * `$strip -> string`: Strip leading and trailing whitespace
   * `$replace(old, new) -> string`: Replace all occurrences of a string 
   * `$trim(length=50, suffix="...") -> string`: Trim the length of a string
@@ -156,88 +222,24 @@ Lists
   * `$index(index) -> any`: Index a list. Negative indices are allowed.
   * `$range(start, end=undefined) -> `: Get a sublist. Defaults to `value.slice(start)`, 
   but an end value can be specified. Negative indices are allowed. 
+  * `$remove_nulls -> any[]`: Remove any values that are `null` or `undefined`
   * `$map(special, ...args) -> any[]`: Apply `special` to every element in the 
   value. Arguments can be passed through to the special being used.
   
  Attributes
   * `$call(func, ...args) -> any`: Call a function that is on the current value, implemented as `value[func](...args)`
   * `$attr(attr) -> any`: Access an attribute of the given object, implemented as `value[attr]`
-  
-## <a name="formatter">Formatter</a>
-> `Formatter` allows fields to be taken from an object and then formatted
->into a string. The basic usage is `new Formatter(<spec>).single(<item>)`.
->However, `.many` is supported as well.
->Fields to be replaced should be wrapped in `{{}}` and any valid
->field query string for `Getter` can be used. For example, 
->`new Formatter('Name: {{name}}').single({name: "John Smith"})` results in
->`Name: John Smith`. Below are some specific details.
 
- * The field specifications from `Getter` are valid here, so the above example
- could instead be `'First Name: {{name.$split(" ").0}}'` to get `First Name: John`
- instead.
- 
- * A fallback value can be specified for a the formatter which will be returned if any of the fields
- being formatted do not exist. Specify using `new Formatter(spec, <fallback>)`.
- 
- * **Field paths can be nested!!!!** - this allows values from one field to be 
- passed as the arguments to another, allowing complex queries. For example,
- `new Formatter("Balance: ${{balance.$subtract({{pending_charges}})}}").format({balance: 1000, pending_charges: 250})`
- which results in `Balance: $750`.
- 
- * Whitespace is allowed inside of the curly braces before and after the field query string. 
- `{{   a  }}` is just as valid as `{{a}}`. 
-
- * **IMPORTANT:** Nested fields that return strings which are then used as arguments 
-must be manually double-quoted. For example, lets say we want to replace the domain `gmail`
-with `<domain>` in `let item = {email: "john_doe@gmail.com"}`. We want to determine the 
-current domain, which we can do with `email.$split("@").1.$split(".").0`, and then
-we want to pass that as an argument into `$replace`. To do so, we need to surround the nested
-field with double-quotes so it will be properly recognized as an argument in the `$replace` special.
-`new Formatter('Generic Email: {{  email.$replace("{{  email.$split("@").1.$split(".").0  }}", "<domain>")  }}').single(item)`
- 
-Example (flattening operations):
-```ecmascript 6
-let errors = {
-    errors: {
-        "Process Error": "Could not communicate with the subprocess",
-        "Connection Error": "Could not connect with the database instance"
-    }
-};
-
-new Formatter('{errors.$items.$map("join", ": \\n\\t").$join("\\n")}').single(errors);
-// Process Error: 
-//   Could not communicate with the subprocess
-// Connection Error: 
-//   Could not connect with the database instance
-```
->The above example shows a powerful usage of flattening `errors` into its items,
->then joining each item; splitting the error name and message between lines, then
->joining all the errors together.
-
-Example (nested replacement):
-```ecmascript 6
-let item = {
-    x1: 1,
-    y1: 1,
-    x2: 12,
-    y2: 54
-};
-
-new Formatter(
-    "Midpoint: [{{x2.$subtract({{x1}}).$divide(2)}}, {y2.$subtract({{y1}}).$divide(2)}}]"
-).single(item);
-// Midpoint: [5.5, 26.5]
-```
 
 ## <a name="filter">Filter</a>
->`Filter` takes the field querying capabilities of `Getter` and combines it with 
+>`Filter` takes the power of `JQL` and combines it with 
 >filtering conditions to allow lists of items to be filtered down to just those of 
->interest. The basic usage is: `Filter(<filters>).many(<list of items>)`, although
->`.single` can also be used to get a boolean answer of whether the item matches the filter or not.
->The filters can be manually built, or the `Key` and `Condition` classes can 
->be used to simplify your code. 
+>interest. The filters can be manually built, or the `Key` and `Condition` classes can 
+>be used to simplify your code.
 
-Filter Schema:
+### `new Filter(filters, empty_filters_response=true, missing_field_response=false)`
+ * `filters`: `Condition | object[]` The filters to apply to any data. If `object[]`, then the
+ filters should be formatted as shown below.
 ```
 [
     {"field": <field>, "operator": <op>, "value": <value>},
@@ -252,19 +254,31 @@ Filter Schema:
 
     ...
 ]
-<field>: anything Getter accepts
+<field>: any valid `JQL` query
 <op>: See list below
 <value>: Anything that makes sense for the operator
 ``` 
+ * `empty_filters_response`: `bool` Determines what gets returned when no filters are supplied.
+ * `missing_field_response`: `bool` Determines the result of a filter where the field could not be found.
 
-> Note on `or`:
+#### `.single(item)`
+>Take a single item and determine whether it satisfies the filters or not
+>
+>`Filter(filters).single(...) -> true/false`
+
+#### `.many(items)`
+>Take a list of items, and returns only those which satisfy the filters
+>
+>`Filter(filters).many(...) -> [result, result, ...]`
+
+### Notes
 ```
 {"or": [ 
     [ {filter1}, {filter2} ], 
     {filter3} 
-]}
+]} === (filter1 AND filter2) OR filter3
 ``` 
->is the same as `(filter1 AND filter2) OR filter3`. Nesting in an `or` will cause those filters
+>Nesting in an `or` will cause those filters
 >to be `AND'd` and then everything in the toplevel of that `or` will be `OR'd`.
 
 Operators:
@@ -286,15 +300,19 @@ Operators:
  * `endswith`
  * `present`
  * `!present`
- 
- The `Filter` constructor can take an object with parameters, by passing it after the filters: 
- `new Filter(filter(s), <params>)`. The accepted parameters are:
-  * `empty_filters_response: true`: Whether to return `true` or `false` if there are no filters. Makes the difference
-  between returning all items or no items if no filters are passed.
+
 
 #### <a name="key">Key</a>
->Intended to simplify having to write `{field: <field>, operator: <operator>, value: value}` 
->a lot. The basic usage is: `Key(<field>).<op>(<value>)`.
+>Intended to simplify having to write `{"field": <field>, "operator": <operator>, "value": value}` 
+>a lot. The basic usage is: `Key(<field>).<op>(<value>)`, or for the first six 
+>operators, the actual Python operators can be used, so `Key(<field>) <op> <value>`.
+>For example: `Key("meta.id").eq(12)` is the same as `Key("meta.id") == 12`,
+>which is the same as `{"field": "meta.id", "operator": "==", "value": 12}`.
+
+>The table below describes all of the functions which map to the underlying conditions, but, in
+>addition, there is the `.operator(op: str)` function which can be use to build a filter.
+>For example: `Key(<field>).operator(<op>).value(<value>)` is the same as 
+>`{"field": <field>, "operator": <op>, "value": <value>}`
 
 Operators: 
 
@@ -322,7 +340,7 @@ Operators:
 #### <a name="condition">Condition</a>
 >Intended to be used in combination with `Key` to make creating filters
 >easier than manually creating the `JSON`. There are three conditions supported:
->`and`, `or`, and `not`. They can be manually accessed via `and_(*args)`, `or_(*args)`, and `not_()`.
+>`and`, `or`, and `not`. They can be manually accessed via `and_(...args)`, `or_(...args)`, and `not_()`.
 
 >Examples
 ```ecmascript 6
@@ -333,26 +351,106 @@ Key('creation_time.$parse_timestamp.$call("year")').lt(2005).or_(
 );
 ```
 
+## <a name="formatter">Formatter</a>
+> `Formatter` allows fields to be queried from an object and then formatted
+>into a string. Any queries in a format string should be prefixed with `@` and any valid `JQL` query can be used. For example, 
+>`new Formatter('Name: @name}').single({"name": "John Smith"})` results in
+>`Name: John Smith`.
+
+### `Formatter(spec, fallback=null)`
+ * `spec`: `str` The format string
+ * `fallback`: `any` The value that will be returned if the query fails
+ 
+#### `.single(item)`
+> Return a formatted string or the fallback value if the query fails
+
+#### `.many(items)`
+> Return a list of formatted strings or the fallback value.
+
+### Notes
+>The differences between `Query` and `Formatter` are:
+ * `Query` can return a value of any type, `Formatter` just returns strings
+ * `Formatter` supports multiple queries, end-to-end, `Query` does not
+ * All queries must be prefixed with `@` with `Formatter`, not just when used as an argument like with `Query`
+ * Both support all the features of `JQL`
+ * `Query` actually can do everything `Formatter` does by using `$prefix`, `$suffix`, and `$string`. For example,
+ `'@name @age'` -> `'name.$suffix(" ").$suffix(@age)'`. However, the latter is much longer than the former.
+ 
+Example (flattening operations):
+```ecmascript 6
+let errors = {
+    errors: {
+        "Process Error": "Could not communicate with the subprocess",
+        "Connection Error": "Could not connect with the database instance"
+    }
+};
+
+new Formatter('Erros: @errors.$items.$map("join", ": \\n\\t").$join("\\n")}').single(errors);
+// Errors: 
+// Process Error: 
+//   Could not communicate with the subprocess
+// Connection Error: 
+//   Could not connect with the database instance
+```
+>The above example shows a powerful usage of flattening `errors` into its items,
+>then joining each item; splitting the error name and message between lines, then
+>joining all the errors together.
+
+Example (nested replacement):
+```ecmascript 6
+let item = {
+    x1: 1,
+    y1: 1,
+    x2: 12,
+    y2: 54
+};
+
+new Formatter(
+    "Midpoint: [@x2.$subtract(@x1).$divide(2), @y2.$subtract(@y1).$divide(2)]"
+).single(item);
+// Midpoint: [5.5, 26.5]
+```
+
+
 ## <a name="performance">Performance</a>
->There are several ways to increase the performance of filtering and getting. The query strings within filters
->or those being passed directly to a `Getter` are parsed when the object is created. This means that using a `Getter`
->or `Filter` object multiple times will be faster then creating a new object every time. 
+>There are several ways to increase the performance of querying, filtering, and formatting. The performance gains can be had
+>by limiting the amount of times a query string has to be parsed. This means that using a `Query`,
+>`Filter`, or `Formatter` object multiple times will be faster then creating a new object every time. 
 >
 >For example:
-```ecmascript 6
+```javascript
 // slower
 items.forEach(item => {
-    let f = new Getter("timestamp.$parse_timestamp").single(item);
-    /* more stuff */
+  let f = new Query("timestamp.$parse_timestamp").single(item);
+  // do other stuff
 });
 
 // faster
-let getter = new Getter("timestamp.$parse_timestamp");
+let query = new Query("timestamp.$parse_timestamp");
 items.forEach(item => {
-    let f = getter.single(item);
-    /* more stuff */
-})
+  let f = query.single(item);
+  // do other stuff
+});
 ```
 
->Specifically, reusing a `Getter` can improve performance by 8-9x and reusing a `Filter` can improve
->by 5-6x.
+>Across 10,000 runs:
+ * reusing `Query` can improve performance by 192
+ * reusing `Filter` can improve performance by 120x
+ * reusing `Formatter` can improve performance by 210x.
+
+## Changelog
+ * `1.0.6`
+   * Migrate to TypeScript, so a declaration file is now included in the distribution
+   * Add this `README`
+   * Add `===` and `!==` filters for strict equality checking. The methods `seq` and `sne` have
+   been added to `Key` to correspond with the new filters.
+   * Rename `null` -> `!present` and `!null` -> `present`. Corresponding methods have been renamed
+   to `not_present` and `present`. This filter will catch values that are `null` or `undefined`.
+   * Make membership filters (`in`, `contains`, `!in` and `!contains`) work properly with 
+   strings, arrays, associative arrays, and sets.
+   * Remove `$datetime`. See below for replacement.
+   * Add `$call` and `$attr` for calling a function and accessing an attribute. Can be used to replace
+   `$datetime` functionality.
+   * Remove `Formatter.format` and add `Formatter.single` and `Formatter.many` to be consistent across
+   other classes and support formatting arrays of items.
+   * Add more tests to increase coverage and do basic performance testing
