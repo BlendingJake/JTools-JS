@@ -1,4 +1,4 @@
-import { Getter } from "./getter";
+import { Query } from "./query";
 export class Condition {
     constructor(field, operator, value) {
         this.output = [
@@ -41,6 +41,15 @@ export class Condition {
     }
     filters() {
         return this.output;
+    }
+}
+class ValueLessCondition {
+    constructor(field, op) {
+        this.field = field;
+        this.op = op;
+    }
+    value(value) {
+        return new Condition(this.field, this.op, value);
     }
 }
 class _Key {
@@ -100,6 +109,9 @@ class _Key {
     }
     not_present() {
         return new Condition(this.field, "!present", null);
+    }
+    operator(op) {
+        return new ValueLessCondition(this.field, op);
     }
 }
 export function Key(field) {
@@ -162,24 +174,26 @@ const _filters = {
     "!interval": (field_value, value) => { return field_value < value[0] || value[1] < field_value; },
     "startswith": (field_value, value) => { return field_value.startsWith(value); },
     "endswith": (field_value, value) => { return field_value.endsWith(value); },
-    "present": (field_value, _) => { return field_value !== null && field_value !== undefined; },
-    "!present": (field_value, _) => { return field_value === null || field_value === undefined; }
+    "present": (field_value, _) => { return field_value !== null && field_value !== undefined && field_value !== MISSING; },
+    "!present": (field_value, _) => { return field_value === null || field_value === undefined || field_value === MISSING; }
 };
+const MISSING = "__missing__";
 export class Filter {
-    constructor(filters, params = {}) {
+    constructor(filters, empty_filters_response = true, missing_field_response = false) {
+        this.empty_filters_response = empty_filters_response;
+        this.missing_field_response = missing_field_response;
         if (filters instanceof Condition) {
             this.filters = filters.filters();
         }
         else {
             this.filters = filters;
         }
-        this.getters = this._preprocess(this.filters);
-        this.empty_filters_response = params.empty_filters_response || true;
+        this.queries = this._preprocess(this.filters);
     }
     _preprocess(filters) {
         let out = {};
         filters.forEach(f => {
-            if (f.length !== undefined) {
+            if (Array.isArray(f)) {
                 out = Object.assign(Object.assign({}, out), this._preprocess(f));
             }
             else if (f.or !== undefined) {
@@ -189,7 +203,7 @@ export class Filter {
                 out = Object.assign(Object.assign({}, out), this._preprocess(f.not));
             }
             else if (out[f.field] === undefined) {
-                out[f.field] = new Getter(f.field);
+                out[f.field] = new Query(f.field, MISSING);
             }
         });
         return out;
@@ -199,8 +213,9 @@ export class Filter {
             filters = this.filters;
         }
         let overall = null;
+        let c;
+        let query_result;
         for (let f of filters) {
-            let c;
             if (f.length !== undefined) {
                 c = this._filter(item, f);
             }
@@ -211,7 +226,13 @@ export class Filter {
                 c = !this._filter(item, f.not);
             }
             else {
-                c = _filters[f.operator](this.getters[f.field].single(item), f.value);
+                query_result = this.queries[f.field].single(item);
+                if (query_result === MISSING && f.operator !== 'present' && f.operator !== '!present') {
+                    c = this.missing_field_response;
+                }
+                else {
+                    c = _filters[f.operator](query_result, f.value);
+                }
             }
             if (overall === null) {
                 overall = c;

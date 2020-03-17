@@ -1,4 +1,6 @@
 import moment from "moment";
+import { JQLQuery, JQLField, JQLSpecial, JQLList, JQLDict, JQLSet } from "./grammar/jql";
+import { JQLQueryBuilder } from "./grammar/antlr_jql";
 const _specials = {
     // general
     length: (value) => {
@@ -12,10 +14,28 @@ const _specials = {
             return Object.keys(value).length;
         }
     },
+    lookup: (value, mp, fallback = null) => {
+        return (mp[value] !== undefined) ? mp[value] : fallback;
+    },
+    inject: (_, value) => { return value; },
+    print: (value) => { console.log(value); return value; },
     // maps
     keys: (value) => { return Object.keys(value); },
     values: (value) => { return Object.keys(value).map(key => value[key]); },
     items: (value) => { return Object.keys(value).map(key => [key, value[key]]); },
+    wildcard: (value, nxt, just_field = true) => {
+        let out = [];
+        Object.keys(value).forEach(key => {
+            try {
+                if (value[key][nxt] !== undefined) {
+                    out.push((just_field) ? value[key][nxt] : value[key]);
+                }
+            }
+            catch (TypeError) {
+            }
+        });
+        return out;
+    },
     // type conversions
     set: (value) => { return new Set(value); },
     float: (value) => { return parseFloat(value); },
@@ -55,8 +75,9 @@ const _specials = {
     math: (value, attr) => { return Math[attr](value); },
     round: (value, n = 2) => { return value.toFixed(n); },
     // string
-    prefix: (value, prefix) => { return prefix + value; },
-    suffix: (value, suffix) => { return value + suffix; },
+    prefix: (value, prefix) => { return `${prefix}${value}`; },
+    suffix: (value, suffix) => { return `${value}${suffix}`; },
+    wrap: (value, prefix, suffix) => { return `${prefix}${value}${suffix}`; },
     strip: (value) => { return value.trim(); },
     replace: (value, old, new_) => { return value.replace(old, new_); },
     trim: (value, length = 50, suffix = "...") => {
@@ -74,17 +95,17 @@ const _specials = {
         return sum;
     },
     join: (value, sep = ", ") => { return value.join(sep); },
-    index: (value, index) => {
-        if (typeof index === "number") {
-            if (index < 0) { // support negative indices
-                return value[value.length + index];
+    index: (value, index, fallback = null) => {
+        try {
+            if (value[index] === undefined) {
+                return fallback;
             }
             else {
                 return value[index];
             }
         }
-        else {
-            return value[index];
+        catch (TypeError) {
+            return fallback;
         }
     },
     range: (value, start, end = undefined) => {
@@ -100,6 +121,15 @@ const _specials = {
             return value.slice(start);
         }
     },
+    remove_nulls: (value) => {
+        let out = [];
+        value.forEach(value => {
+            if (value !== null && value !== undefined) {
+                out.push(value);
+            }
+        });
+        return out;
+    },
     map: (value, special, ...args) => {
         return value.map(item => {
             return _specials[special](item, ...args);
@@ -113,63 +143,27 @@ const _specials = {
         return value[attr];
     }
 };
-const _func_def = new RegExp(/(?:\$[a-z_]+(?:\(((?:(?!{{)(?:(?:"(?!{{)[^"]*")|[^)]))*)\))?)/i);
-const _field = new RegExp(/[-_a-zA-Z0-9]+/i);
-const _part = new RegExp("(?:\\.(" + _func_def.source + "|" + _field.source + "))", "gi");
-const _full_pattern = new RegExp("(" + _func_def.source + "|" + _field.source + ")(" + _part.source + "*)", "i");
-export class Getter {
-    constructor(field, fallback = null) {
-        this.multiple = !(typeof field === "string" || field instanceof String);
+export class Query {
+    constructor(query, fallback = null) {
+        this.multiple = !(typeof query === "string" || query instanceof String || query instanceof JQLQuery);
         //@ts-ignore We know from the line above whether this is going to be a single string or array of strings
-        this.field = (this.multiple === true) ? field : [field];
+        this.queries = (this.multiple === true) ? query : [query];
         this.fallback = fallback;
-        this.parts = this.field.map(f => this._process_field(f));
-    }
-    _process_field(field) {
-        let parts = [];
-        let match = field.match(_full_pattern);
-        if (match !== null) {
-            if (match[1][0] === "$") {
-                parts.push(this._parse_special(match[1], match[2]));
+        this.parts = [];
+        this.queries.forEach((f) => {
+            if (f instanceof JQLQuery) {
+                this.parts.push(f);
             }
             else {
-                parts.push(match[1]);
-            }
-            if (match[3] !== "") {
-                for (let part of match[3].matchAll(_part)) {
-                    if (part[1][0] === "$") {
-                        parts.push(this._parse_special(part[1], part[2]));
-                    }
-                    else {
-                        parts.push(part[1]);
-                    }
+                try {
+                    let p = new JQLQueryBuilder(f).get_built_query();
+                    this.parts.push(p);
+                }
+                catch (JQLParseError) {
+                    this.parts.push(null);
                 }
             }
-        }
-        return parts;
-    }
-    _parse_special(text, args_text) {
-        let special;
-        if (text.indexOf("(") !== -1) {
-            special = text.slice(1, text.indexOf("("));
-        }
-        else {
-            special = text.slice(1);
-        }
-        let args;
-        if (args_text !== undefined) {
-            args = JSON.parse(`[${args_text}]`);
-        }
-        else {
-            args = [];
-        }
-        return {
-            special: special,
-            args: args
-        };
-    }
-    static full_regex() {
-        return _full_pattern.source;
+        });
     }
     static register_special(name, func) {
         if (_specials[name] === undefined) {
@@ -181,33 +175,65 @@ export class Getter {
             return false;
         }
     }
-    single(item) {
-        let values = [];
-        let value;
-        for (let field of this.parts) {
-            value = item;
-            if (field.length === 0) {
-                value = this.fallback;
-            }
-            else {
-                for (let part of field) {
-                    if (value !== this.fallback) {
-                        if (part.special !== undefined) {
-                            value = _specials[part.special](value, ...part.args);
+    _query(value, query) {
+        let og = value;
+        query.parts.forEach(part => {
+            if (part instanceof JQLField) {
+                if (value !== this.fallback) {
+                    try {
+                        if (value[part.field] !== undefined) {
+                            value = value[part.field];
                         }
                         else {
-                            if (value[part] !== undefined) {
-                                value = value[part];
-                            }
-                            else {
-                                value = this.fallback;
-                            }
+                            value = this.fallback;
                         }
+                    }
+                    catch (TypeError) {
+                        value = this.fallback;
                     }
                 }
             }
-            values.push(value);
+            else if (part instanceof JQLSpecial) {
+                value = _specials[part.special](value, ...part.arguments.map(arg => this._value(og, arg)));
+            }
+        });
+        return value;
+    }
+    _value(value, q_or_v) {
+        if (q_or_v instanceof JQLQuery) {
+            return this._query(value, q_or_v);
         }
+        else if (q_or_v instanceof JQLList) {
+            return q_or_v.value.map(part => this._value(value, part));
+        }
+        else if (q_or_v instanceof JQLDict) {
+            let out = {};
+            q_or_v.value.forEach(kv => {
+                out[this._value(value, kv[0])] = this._value(value, kv[1]);
+            });
+            return out;
+        }
+        else if (q_or_v instanceof JQLSet) {
+            let out = new Set();
+            q_or_v.value.forEach(v => {
+                out.add(this._value(value, v));
+            });
+            return out;
+        }
+        else {
+            return q_or_v.value;
+        }
+    }
+    single(item) {
+        let values = [];
+        this.parts.forEach(query => {
+            if (query !== null) {
+                values.push(this._query(item, query));
+            }
+            else {
+                values.push(this.fallback);
+            }
+        });
         return (this.multiple === true) ? values : values[0];
     }
     many(items) {

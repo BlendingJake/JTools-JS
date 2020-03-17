@@ -1,8 +1,8 @@
-import { Getter, Filter, Key } from "../dist";
+import { Query, Filter, Key, Formatter } from "../dist";
 let large_data = require("./data/10000.json");
 
-test("getter reuse", () => {
-    let times = 100;
+test("query reuse", () => {
+    let times = 5;
     let start;
     let sum = 0;
 
@@ -10,12 +10,12 @@ test("getter reuse", () => {
         start = Date.now();
 
         large_data.forEach(item => {
-            new Getter('email.$split("@").1.$split(".").0').single(item);
+            new Query('email.$split("@").1.$split(".").0').single(item);
         });
         let recreate_time = Date.now() - start;
 
         start = Date.now();
-        let getter = new Getter('email.$split("@").1.$split(".").0');
+        let getter = new Query('email.$split("@").1.$split(".").0');
         large_data.forEach(item => {
             getter.single(item);
         });
@@ -24,12 +24,12 @@ test("getter reuse", () => {
         sum += recreate_time / reuse_time;
     }
 
-    console.log(sum / times, "x faster to reuse Getter then recreate");
+    console.log(sum / times, "x faster to reuse Query then recreate");
     expect(sum / times).toBeGreaterThan(5);
 });
 
 test("filter reuse", () => {
-    let times = 100;
+    let times = 5;
     let start;
     let sum = 0;
 
@@ -56,5 +56,32 @@ test("filter reuse", () => {
     }
 
     console.log(sum / times, "x faster to reuse Filter then recreate");
+    expect(sum / times).toBeGreaterThan(5);
+});
+
+test("formatter reuse", () => {
+    let times = 5;
+    let start;
+    let sum = 0;
+
+    for (let i=0; i<times; i++) {
+        start = Date.now();
+
+        large_data.forEach(item => {
+            new Formatter('@email.$split("@").1.$split(".").0 @gender @male').single(item);
+        });
+        let recreate_time = Date.now() - start;
+
+        start = Date.now();
+        let formatter = new Formatter('@email.$split("@").1.$split(".").0 @gender @male');
+        large_data.forEach(item => {
+            formatter.single(item);
+        });
+        let reuse_time = Date.now() - start;
+
+        sum += recreate_time / reuse_time;
+    }
+
+    console.log(sum / times, "x faster to reuse Formatter then recreate");
     expect(sum / times).toBeGreaterThan(5);
 });

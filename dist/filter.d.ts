@@ -1,4 +1,4 @@
-import { Getter } from "./getter";
+import { Query } from "./query";
 declare type Operator = '>' | '<' | '>=' | '<=' | '==' | '!=' | '===' | '!==' | 'in' | '!in' | 'contains' | '!contains' | 'interval' | '!interval' | 'startswith' | 'endswith' | 'present' | '!present';
 interface FilterCondition {
     field: string;
@@ -21,6 +21,12 @@ export declare class Condition {
     not_(): Condition;
     filters(): ConditionType[];
 }
+declare class ValueLessCondition {
+    private field;
+    private op;
+    constructor(field: string, op: Operator);
+    value(value: any): Condition;
+}
 declare class _Key {
     private readonly field;
     constructor(field: string);
@@ -42,17 +48,17 @@ declare class _Key {
     endswith(other: any): Condition;
     present(): Condition;
     not_present(): Condition;
+    operator(op: Operator): ValueLessCondition;
 }
 export declare function Key(field: string): _Key;
 export declare class Filter {
     private readonly filters;
-    private readonly getters;
+    private readonly queries;
     private readonly empty_filters_response;
-    constructor(filters: Condition | ConditionType[], params?: {
-        empty_filters_response?: boolean;
-    });
+    private readonly missing_field_response;
+    constructor(filters: Condition | ConditionType[], empty_filters_response?: boolean, missing_field_response?: boolean);
     _preprocess(filters: ConditionType[]): {
-        [key: string]: Getter;
+        [key: string]: Query;
     };
     _filter(item: any, filters?: ConditionType[], oring?: boolean): boolean;
     many(items: any[]): any[];

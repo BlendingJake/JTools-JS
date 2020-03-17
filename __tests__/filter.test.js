@@ -315,3 +315,21 @@ test("test present + !present", () => {
         new Filter(Key("nested_present.not_present").not_present()).single(data)
     ).toStrictEqual(true);
 });
+
+test("operator", () => {
+    let items = new Filter(Key("address").operator("startswith").value("6")).many(small_data);
+    expect(items.length).toStrictEqual(2);
+
+    let items2 = new Filter(Key("registered").operator("endswith").value("+04:00")).many(small_data);
+    expect(items2.length).toStrictEqual(15);
+});
+
+test("missing", () => {
+    expect(
+        new Filter(Key("invalid").eq("7")).many(small_data).length
+    ).toStrictEqual(0);
+
+    expect(
+        new Filter(Key("invalid").eq("7"), false, true).many(small_data).length
+    ).toStrictEqual(20);
+});

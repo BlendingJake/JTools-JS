@@ -1,59 +1,58 @@
-import { Getter } from "./getter";
+import { Query } from "./query";
+import { JQLMultiQueryBuilder, JQLParseError } from "./grammar/antlr_jql";
+import { JQLMultiQuery, JQLQuery, JQLRawInput } from "./grammar/jql";
 
 const MISSING = "__missing__";
-const _full_replacement = new RegExp("{{\\s*" + Getter.full_regex() + "\\s*}}");
 
 export class Formatter {
     private readonly spec: string;
     private readonly fallback: any;
-    private failed: boolean;
+    private readonly multi_query: null | JQLMultiQuery;
 
     constructor(spec: string, fallback: any=null) {
         this.spec = spec;
         this.fallback = fallback;
-        this.failed = false;
+        
+        try {
+            let mq = new JQLMultiQueryBuilder(this.spec).get_built_query();
+            this.multi_query = mq;
+        } catch (JQLParseError) {
+            this.multi_query = null;
+        }
+    }
+
+    _format(mq: JQLMultiQuery, item: any) {
+        if (mq === null) {
+            return this.fallback;
+        } else {
+            let output = [];
+            let v: any;
+            let part: JQLQuery | JQLRawInput;
+            for (let i=0; i<mq.queries.length; i++) {
+                part = mq.queries[i];
+
+                if (part instanceof JQLQuery) {
+                    v = new Query(part, MISSING).single(item);
+                } else {
+                    v = part.text.replace("@@", "@");
+                }
+
+                if (v === MISSING) {
+                    return this.fallback;
+                } else {
+                    output.push(v);
+                }
+            }
+
+            return output.map(p => String(p)).join("");
+        }
     }
 
     single(item: any): string | any {
-        return this._replace(this.spec, item);
+        return this._format(this.multi_query, item);
     }
 
     many(items: any[]): (string | any)[] {
-        return items.map(item => this._replace(this.spec, item));
-    }
-
-    _replace(spec: string, item: any): string | any {
-        let updated = spec.replace(_full_replacement, (match, ...args) => {
-            return this._replacer(args, item);
-        });
-
-        if (this.failed === true) {
-            return this.fallback;
-        } else {
-            if (updated !== spec) {
-                return this._replace(updated, item);
-            } else {
-                return updated;
-            }
-        }
-    }
-
-    _replacer(match: any[], item: any): string {
-        let field = match[0];
-        if (match[2] !== "") {
-            field += match[2];
-        }
-
-        let result = new Getter(field, MISSING).single(item);
-        if (result === MISSING) {
-            this.failed = true;
-            return "";
-        } else {
-            if (Array.isArray(result) || typeof(result) === "object") {
-                return JSON.stringify(result);
-            } else {
-                return (result !== null && result !== undefined) ? result.toString() : "null";
-            }
-        }
+        return items.map(item => this._format(this.multi_query, item));
     }
 }
