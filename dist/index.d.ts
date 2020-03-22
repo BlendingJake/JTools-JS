@@ -1,5 +1,5 @@
 import { Filter, Key, Condition } from "./filter";
 import { Formatter } from "./formatter";
 import { Query } from "./query";
-declare const __version__ = "1.1.0";
+declare const __version__ = "1.1.2";
 export { Filter, Formatter, Key, Condition, Query, __version__ };

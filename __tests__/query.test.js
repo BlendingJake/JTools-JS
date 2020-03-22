@@ -407,6 +407,22 @@ test("nested query", () => {
     ).toStrictEqual(`Lat=${small_data[0].latitude} & Lon=${small_data[0].longitude}`);
 });
 
+test("tripled nested", () => {
+    const data = {
+        data: "test",
+
+        keys: {
+            key1: "data"
+        },
+
+        key1: "key1"
+    };
+
+    expect(
+        new Query("$index(@keys.$index(@key1))").single(data)
+    ).toStrictEqual(data.data);
+});
+
 test("inject", () => {
     let Q = (q) => { return new Query(q).single({}); };
     
@@ -470,3 +486,14 @@ test('null field', () => {
         new Query('n.a', 'nope').single({n: null})
     ).toStrictEqual('nope');
 });
+
+test('valid names', () => {
+    let keys = ["_", "-", "23", "123asdf", "bill_1234_asdf-24234"];
+    let value = [1, 2];
+
+    keys.forEach(key => {
+        expect(
+            new Query(key).single({[key]: value})
+        ).toStrictEqual(value);
+    })
+})

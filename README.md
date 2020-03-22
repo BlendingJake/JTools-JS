@@ -9,7 +9,7 @@
   * `new Query("data.timestamp.$parse_timestamp.$attr('year')").many(items)`
 * `Filter`: Combine the querying capabilities of `Query` with the ability
  to define filtering conditions to find just the elements you want.
-  * `mew Filter(Key("data.timestamp.$parse_timestamp.$attr('year')").gt(2015)).many(data)`
+  * `new Filter(Key("data.timestamp.$parse_timestamp.$attr('year')").gt(2015)).many(data)`
 * `Formatter`: Take multiple queries and format them into a string
   * `new Formatter("Item @data.id was released in @data.timestamp.$parse_timestamp.$call('year')").single(data[0])`
 >
@@ -30,26 +30,16 @@
  but not on `{"item": {0: ...}}`. The JavaScript version essentially always has `convert_ints=True`.
 
 ## Recent Changes
- * `1.1.0`
-   * Rename `Getter` to `Query` to more accurately describe what the class does
-   * Migrate queries to use `JQL`
-     * The migration opens the door to nested queries in `Query`, allowing queries, prefixed with `@` to be used
-     as arguments to specials, or even as values in the supported argument data structures
-     * Special arguments are no longer parsed as `JSON`, allowing features like sets, query nesting, and support
-     for single and double quoted strings.
-     * Formatter no longer uses `{{}}` to surround queries. Instead, all queries must be prefixed with `@`, so
-     `"{{name}} {{age}}"` -> `"@name @age"`. `@@` must be used to get a literal `@` in a formatted string:
-     `"bob@@gmail.com"` -> `"bob@gmail.com"`
-     * Formatter got about a 2x performance boost
-   * Added `$wrap(prefix, suffix)` to combine `$prefix` and `$suffix`
-   * Added `$remove_nulls`
-   * Added `$lookup(map, fallback=None)`
-   * Added `$wildcard(next, just_value=True)`, which allows level of nesting to be "skipped", such that a list
-   of sub-values where `next` is present
-   * Added a `fallback` argument to `$index`
-   * Added `$print` to display the current value in the query
-   * Added `$inject` to allow any valid argument value to be injected into the query to be
-  accessed and transformed by subsequent fields and specials
+ * `1.1.2`
+   * Version `1.1.1` was skipped to keep on track with `JTools-Py`
+   * Catch and handle `Extraneous Input Error`
+   * Change `JQL` so that field and special names must only contain `[-a-zA-Z0-9_]`. `$index` can be used to get fields
+   with prohibited characters. The change was to support more formatting use-cases, like `Age: @age, DOB: @dob`, which 
+   previously would have failed because the `,` would have been considered part of the field name.
+   * Change `Formatter` so that `fallback` is just a string that is substituted for invalid queries, instead of being
+   the entire return value. Previously, `"Age: @missing"` would result in `None`, not it results in `"Age: <missing>"`.
+   This change allows for better debugging as it becomes clear exactly which queries are failing.
+   * Add function docstrings
   
 ## Glossary
  * [`Installation`](#install)
@@ -81,8 +71,9 @@ EX: 'data', 'data.timestamp', 'data.$split', '$split.0'
 #### field
 A field is just a value that can be used as an index, like a string or integer key for a map/dict or an integer for an array. JavaScript has very loose type-checking between strings
 and integers, so either can essentially work in place of the other when indexing.
-Fields cannot contain ` `, `.`, or ` ( `. Instead, `$index("<field>")` can be used
-to access fields with those prohibited characters. 
+
+Fields can only contain the following characters: `[-a-zA-Z0-9_]`. However, fields with prohibited characters can still
+be indexed by using the `$index` special, so to index `range[0]` use `$index("range[0]")`.
 
 #### $special
 A special is a function that is applied to the value that has been queried so far. There is a complete list of specials
@@ -357,9 +348,9 @@ Key('creation_time.$parse_timestamp.$call("year")').lt(2005).or_(
 >`new Formatter('Name: @name}').single({"name": "John Smith"})` results in
 >`Name: John Smith`.
 
-### `Formatter(spec, fallback=null)`
+### `Formatter(spec, fallback="<missing>")`
  * `spec`: `str` The format string
- * `fallback`: `any` The value that will be returned if the query fails
+ * `fallback`: `str` The value that will be used in the formatted string if a query could not be performed. For example, if the field `missing` does exist, then the query `"Age: @missing"` will result in `"Age: <missing>"`
  
 #### `.single(item)`
 > Return a formatted string or the fallback value if the query fails
@@ -373,8 +364,8 @@ Key('creation_time.$parse_timestamp.$call("year")').lt(2005).or_(
  * `Formatter` supports multiple queries, end-to-end, `Query` does not
  * All queries must be prefixed with `@` with `Formatter`, not just when used as an argument like with `Query`
  * Both support all the features of `JQL`
- * `Query` actually can do everything `Formatter` does by using `$prefix`, `$suffix`, and `$string`. For example,
- `'@name @age'` -> `'name.$suffix(" ").$suffix(@age)'`. However, the latter is much longer than the former.
+ * `Query` actually can theoretically do everything `Formatter` does by using `$prefix`, `$suffix`, and `$string`. 
+ For example, `'@name @age'` -> `'name.$suffix(" ").$suffix(@age)'`. However, the latter is much longer than the former
  
 Example (flattening operations):
 ```ecmascript 6
@@ -439,6 +430,27 @@ items.forEach(item => {
  * reusing `Formatter` can improve performance by 210x.
 
 ## Changelog
+ * `1.1.0`
+   * Rename `Getter` to `Query` to more accurately describe what the class does
+   * Migrate queries to use `JQL`
+     * The migration opens the door to nested queries in `Query`, allowing queries, prefixed with `@` to be used
+     as arguments to specials, or even as values in the supported argument data structures
+     * Special arguments are no longer parsed as `JSON`, allowing features like sets, query nesting, and support
+     for single and double quoted strings.
+     * Formatter no longer uses `{{}}` to surround queries. Instead, all queries must be prefixed with `@`, so
+     `"{{name}} {{age}}"` -> `"@name @age"`. `@@` must be used to get a literal `@` in a formatted string:
+     `"bob@@gmail.com"` -> `"bob@gmail.com"`
+     * Formatter got about a 2x performance boost
+   * Added `$wrap(prefix, suffix)` to combine `$prefix` and `$suffix`
+   * Added `$remove_nulls`
+   * Added `$lookup(map, fallback=None)`
+   * Added `$wildcard(next, just_value=True)`, which allows level of nesting to be "skipped", such that a list
+   of sub-values where `next` is present
+   * Added a `fallback` argument to `$index`
+   * Added `$print` to display the current value in the query
+   * Added `$inject` to allow any valid argument value to be injected into the query to be
+  accessed and transformed by subsequent fields and specials
+
  * `1.0.6`
    * Migrate to TypeScript, so a declaration file is now included in the distribution
    * Add this `README`

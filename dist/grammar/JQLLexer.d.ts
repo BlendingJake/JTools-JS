@@ -23,8 +23,7 @@ export declare class JQLLexer extends Lexer {
     static readonly STRING = 18;
     static readonly SPACE = 19;
     static readonly WS = 20;
-    static readonly IDENTIFIER = 21;
-    static readonly LAST = 22;
+    static readonly LAST = 21;
     static readonly channelNames: string[];
     static readonly modeNames: string[];
     static readonly ruleNames: string[];

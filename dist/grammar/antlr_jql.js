@@ -1,6 +1,6 @@
 import { JQLQuery, JQLField, JQLSpecial, JQLList, JQLValue, JQLSet, JQLDict, JQLMultiQuery, JQLRawInput } from "./jql";
 import { JQLParser } from "./JQLParser";
-import { DefaultErrorStrategy, CommonTokenStream, ANTLRInputStream } from "antlr4ts";
+import { DefaultErrorStrategy, CommonTokenStream, ANTLRInputStream, ConsoleErrorListener } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker";
 import { InputMismatchException } from "antlr4ts";
 import { JQLLexer } from "./JQLLexer";
@@ -135,9 +135,19 @@ class JQLErrorStrategy extends DefaultErrorStrategy {
         }
     }
 }
+class JQLSyntaxError extends ConsoleErrorListener {
+    constructor() {
+        super();
+    }
+    syntaxError() {
+        throw new JQLParseError("Syntax error");
+    }
+}
 class JQLCustomParser extends JQLParser {
     constructor(input) {
         super(input);
+        this.removeErrorListeners();
+        this.addErrorListener(new JQLSyntaxError());
         this._errHandler = new JQLErrorStrategy();
     }
 }

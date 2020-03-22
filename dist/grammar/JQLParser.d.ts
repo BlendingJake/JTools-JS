@@ -26,8 +26,7 @@ export declare class JQLParser extends Parser {
     static readonly STRING = 18;
     static readonly SPACE = 19;
     static readonly WS = 20;
-    static readonly IDENTIFIER = 21;
-    static readonly LAST = 22;
+    static readonly LAST = 21;
     static readonly RULE_jql_multi_query = 0;
     static readonly RULE_jql_query = 1;
     static readonly RULE_query = 2;
@@ -255,18 +254,6 @@ export declare class NameContext extends ParserRuleContext {
     DIGITS(i: number): TerminalNode;
     LETTERS(): TerminalNode[];
     LETTERS(i: number): TerminalNode;
-    LBRACKET(): TerminalNode[];
-    LBRACKET(i: number): TerminalNode;
-    RBRACKET(): TerminalNode[];
-    RBRACKET(i: number): TerminalNode;
-    LBRACE(): TerminalNode[];
-    LBRACE(i: number): TerminalNode;
-    RBRACE(): TerminalNode[];
-    RBRACE(i: number): TerminalNode;
-    SEMI(): TerminalNode[];
-    SEMI(i: number): TerminalNode;
-    IDENTIFIER(): TerminalNode[];
-    IDENTIFIER(i: number): TerminalNode;
     constructor(parent: ParserRuleContext | undefined, invokingState: number);
     get ruleIndex(): number;
     enterRule(listener: JQLListener): void;

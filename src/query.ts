@@ -151,6 +151,11 @@ export class Query {
     private readonly fallback: any;
     private readonly parts: (null | JQLQuery)[];
 
+    /**
+     * Create a query object from a JQL query string, or a list of JQL query strings
+     * @param query The JQL query string(s)
+     * @param fallback A fallback vlaue that will be used if a field cannot be found
+     */
     constructor(query: string | string[] | JQLQuery | JQLQuery[], fallback: any=null) {
         this.multiple = !(typeof query === "string" || query instanceof String || query instanceof JQLQuery);
         //@ts-ignore We know from the line above whether this is going to be a single string or array of strings
@@ -170,16 +175,6 @@ export class Query {
                 }
             }
         });
-    }
-
-    static register_special(name: string, func: SpecialFunction): boolean {
-        if (_specials[name] === undefined) {
-            _specials[name] = func;
-            return true;
-        } else {
-            console.warn(`${name} is already registered as a special value`);
-            return false;
-        }
     }
 
     _query(value: any, query: JQLQuery) {
@@ -229,6 +224,11 @@ export class Query {
         }
     }
 
+    /**
+     * Query the item
+     * @param item The item to query
+     * @returns A value, or list of values, depending on whether one or multiple queries are present
+     */
     single(item: any): any | any[] {
         let values = [];
         this.parts.forEach(query => {
@@ -242,7 +242,29 @@ export class Query {
         return (this.multiple === true) ? values : values[0];
     }
 
+    /**
+     * Query the items
+     * @param items The items to query
+     * @returns A list of values or list of lists of values, depending on wehther one or multiple queries are present
+     */
     many(items: any[]): any[] | any[][] {
         return items.map(item => this.single(item));
+    }
+
+    /**
+     * Register a new special that can be accessed with $<name>.
+     * The function should take at least one argument, which will be the current value in query.
+     * @param name The name of the special - must only contain these characters: [-a-zA-Z0-9_]
+     * @param func The function that will be applied to the value
+     * @returns Whether or not the special could be registered
+     */
+    static register_special(name: string, func: SpecialFunction): boolean {
+        if (_specials[name] === undefined) {
+            _specials[name] = func;
+            return true;
+        } else {
+            console.warn(`${name} is already registered as a special value`);
+            return false;
+        }
     }
 }

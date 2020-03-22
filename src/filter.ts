@@ -242,6 +242,13 @@ export class Filter {
     private readonly empty_filters_response: boolean;
     private readonly missing_field_response: boolean;
 
+    /**
+     * Prepare a filter object from a list of filters, or from a condition object
+     * @param filters The filters
+     * @param empty_filters_response What is returned if there are no filters. Makes the difference between
+     * returning all items for empty filters, or returning none.
+     * @param missing_field_response What is returned for a filter if the field was not present
+     */
     constructor(filters: Condition | ConditionType[], empty_filters_response: boolean=true, 
         missing_field_response: boolean=false) {
         this.empty_filters_response = empty_filters_response;
@@ -320,6 +327,20 @@ export class Filter {
         return (overall === null) ? this.empty_filters_response : overall;
     }
 
+    /**
+     * Filter a single item
+     * @param item The item to filter
+     * @returns Whether or not the item meets the filter
+     */
+    single(item: any): boolean {
+        return this._filter(item);
+    }
+
+    /**
+     * Filter the list of items
+     * @param items The items to filter
+     * @returns Only the items that satisfy the filter
+     */
     many(items: any[]): any[] {
         let out = [];
         items.forEach(item => {
@@ -329,9 +350,5 @@ export class Filter {
         });
 
         return out;
-    }
-
-    single(item: any): boolean {
-        return this._filter(item);
     }
 }

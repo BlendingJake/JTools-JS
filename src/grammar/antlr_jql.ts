@@ -1,7 +1,7 @@
 import { JQLListener } from "./JQLListener";
 import { JQLQuery, JQLField, JQLSpecial, JQLList, JQLValue, JQLSet, JQLDict, JQLMultiQuery, JQLRawInput } from "./jql";
 import { QueryContext, Query_fieldContext, SpecialContext, Special_nameContext, List_valueContext, Set_valueContext, Object_valueContext, KeyContext, ValueContext, Jql_multi_queryContext, Raw_textContext, JQLParser } from "./JQLParser";
-import { DefaultErrorStrategy, Parser, RecognitionException, CommonTokenStream, ANTLRInputStream } from "antlr4ts";
+import { DefaultErrorStrategy, Parser, RecognitionException, CommonTokenStream, ANTLRInputStream, ConsoleErrorListener } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker";
 import { InputMismatchException } from "antlr4ts";
 import { JQLLexer } from "./JQLLexer";
@@ -158,9 +158,22 @@ class JQLErrorStrategy extends DefaultErrorStrategy {
     }
 }
 
+class JQLSyntaxError extends ConsoleErrorListener {
+    constructor() {
+        super();
+    }
+
+    syntaxError() {
+        throw new JQLParseError("Syntax error");
+    }
+}
+
 class JQLCustomParser extends JQLParser {
     constructor(input: CommonTokenStream) {
         super(input);
+
+        this.removeErrorListeners();
+        this.addErrorListener(new JQLSyntaxError());
         this._errHandler = new JQLErrorStrategy();
     }
 }

@@ -19,7 +19,7 @@ test("nested capital", () => {
 test("format missing", () => {
     expect(
         new Formatter("@missing").single({})
-    ).toStrictEqual(null);
+    ).toStrictEqual("<missing>");
 });
 
 test("format missing nested", () => {
@@ -61,3 +61,30 @@ test("format multiple", () => {
         `${small_data[1].name} ${small_data[1].gender}`
     ]);
 });
+
+test("at at", () => {
+    expect(
+        new Formatter("<redacted>@@@email.$split('@').1").single(small_data[0])
+    ).toStrictEqual(`<redacted>@${small_data[0]['email'].split('@')[1]}`);
+});
+
+test("surrounded query", () => {
+    expect(
+        new Formatter('<p class="lead">@email</p>').single(small_data[0])
+    ).toStrictEqual(`<p class="lead">${small_data[0]["email"]}</p>`);
+});
+
+test("on missing out of several", () => {
+    expect(
+        new Formatter("Name: @name, Missing: @missing").single(small_data[0])
+    ).toStrictEqual(`Name: ${small_data[0]['name']}, Missing: <missing>`);
+});
+
+test("special surrounded", () => {
+    const x = 5;
+    const y = 5.6;
+
+    expect(
+        new Formatter("@x+@y=@x.$add(@y)=@y.$add(@x)").single({"x": x, "y": y})
+    ).toStrictEqual(`${x}+${y}=${x + y}=${y + x}`);
+})
