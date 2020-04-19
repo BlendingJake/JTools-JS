@@ -31,23 +31,23 @@
 
 ## Recent Changes
  * `1.1.3`
-  * Changed the behavior of `new Query("")`, from returning the fallback value, to returning the source data element itself.
+   * Changed the behavior of `new Query("")`, from returning the fallback value, to returning the source data element itself.
   For example, `new Query("").single(data) === data`.
-  * Added `SpecialNotFoundError`, which is raised when an invalid special is queried. Can be imported as 
+   * Added `SpecialNotFoundError`, which is raised when an invalid special is queried. Can be imported as 
   `import { SpecialNotFoundError } from "@blending_jake/jtools";`
-  * Added new specials
-   * `$store_as(name)` Store the current query value in the current context for later use in the query. This does not 
+   * Added new specials
+     * `$store_as(name)` Store the current query value in the current context for later use in the query. This does not 
    change the underlying data being queried.
-   * `$group_by(key="", count=false)` Take an incoming list and group the values by the specified key.
+     * `$group_by(key="", count=false)` Take an incoming list and group the values by the specified key.
    Any valid JQL query can be used for the key, so `""` means the value itself. The result by default will be
    keys to a list of values. However, if `count=true`, then the result will be keys to the number of elements with each 
    key.
-   * `$sort(key="", reverse=false)` Sort an incoming list of values by a given key which can be any valid JQL query.
+     * `$sort(key="", reverse=false)` Sort an incoming list of values by a given key which can be any valid JQL query.
    By default, `key=""` means the top-level value will be sorted on.
-   * `$dict` Take an incoming list of `(key, value)` pairs and make a dict out of them.
-   * `$join_arg(arg, sep=', ')` Similar to `$join` except this operates on an argument instead of the query value.
+     * `$dict` Take an incoming list of `(key, value)` pairs and make a dict out of them.
+     * `$join_arg(arg, sep=', ')` Similar to `$join` except this operates on an argument instead of the query value.
    Essentially a shortened form of `$inject(arg).$join(sep)`.
-  * Changed the underlying special function definition to now include the keyword argument `context`. This argument is 
+   * Changed the underlying special function definition to now include the keyword argument `context`. This argument is 
   implemented to only be accessed by name to avoid collision if the user provides too many arguments in their query. 
   The purpose of the context is to support specials adding values temporarily to the data
   namespace of the query, like `$store_as` does.
