@@ -1,4 +1,4 @@
-import { Query } from "../dist";
+import { Query, SpecialNotFoundError } from "../dist";
 let small_data = require("./data/20.json");
 
 test(".single() for single field", () => {
@@ -305,6 +305,10 @@ test("list", () => {
     ).toStrictEqual(data.a.join(", "));
 
     expect(
+        new Query("$join_arg(@a)").single(data)
+    ).toStrictEqual(data.a.join(", "));
+
+    expect(
         new Query("a.$index(2)").single(data)
     ).toStrictEqual(data.a[2]);
 
@@ -343,8 +347,8 @@ test("$map and several more", () => {
 
 test("empty field", () => {
     expect(
-        new Query("", "MISSING").single(small_data[0])
-    ).toStrictEqual("MISSING");
+        new Query("").single(small_data[0])
+    ).toStrictEqual(small_data[0]);
 });
 
 test("register special", () => {
@@ -473,8 +477,8 @@ test("remove_nulls", () => {
 
 test("no query", () => {
     expect(
-        new Query("", 'nope').single({})
-    ).toStrictEqual('nope');
+        new Query("").single({})
+    ).toStrictEqual({});
 
     expect(
         new Query("@invalid", 'nope').single({})
@@ -496,4 +500,153 @@ test('valid names', () => {
             new Query(key).single({[key]: value})
         ).toStrictEqual(value);
     })
-})
+});
+
+test('missing fields', () => {
+    expect(
+        new Query("a").single({b: [1, 2]})
+    ).toStrictEqual(null);
+
+    expect(
+        new Query("b.3").single({b: [1, 2]})
+    ).toStrictEqual(null);
+
+    expect(
+        new Query("b.3", "MISSING").single({b: [1, 2]})
+    ).toStrictEqual("MISSING");
+
+    expect(
+        new Query("b.2.$fallback(4).$divide(2)").single({b: [1, 2]})
+    ).toStrictEqual(2.0);
+
+    expect(
+        new Query("b.1.$fallback(4).$divide(2)").single({b: [1, 6]})
+    ).toStrictEqual(3.0);
+});
+
+test('store as int', () => {
+    const raw = {value: 5};
+    expect(
+        new Query("value.$store_as('temp').$inject(@temp)").single(raw)
+    ).toStrictEqual(raw.value);
+});
+
+test('store as dict', () => {
+    const store = {field: "value"};
+    expect(
+        new Query("$inject({'field': 'value'}).$store_as('temp').$inject(@temp)").single(store)
+    ).toStrictEqual(store);
+});
+
+test('store as with later use', () => {
+    const d = small_data[0];
+    expect(
+        new Query(
+            "greeting.$split('You have ').1.$split(' unread').0.$int.$store_as('unread')" +
+            ".$join_arg([@name, 'is', @age, 'and has', @unread, 'messages'], ' ')"
+        ).single(small_data[0])
+    ).toStrictEqual(
+        `${d.name} is ${d.age} and has 5 messages`
+    );
+});
+
+test('group by flat', () => {
+    const l = [];
+    const val = {};
+    for (let i = 0; i < 12; i += 1) {
+        l.push(i % 3);
+
+        if (val[i % 3] !== undefined) {
+            val[i % 3].push(i % 3);
+        } else {
+            val[i % 3] = [i % 3];
+        }
+    }
+
+    expect(
+        new Query("$group_by").single(l)
+    ).toStrictEqual(val);
+});
+
+test('group by nested', () => {
+    const val = {};
+    small_data.forEach(item => {
+        const v = item.favoriteFruit.apple.toFixed(1);
+        if (val[v] === undefined) {
+            val[v] = [item];
+        } else {
+            val[v].push(item);
+        }
+    });
+
+    expect(
+        new Query("$group_by('favoriteFruit.apple.$round(1)')").single(small_data)
+    ).toStrictEqual(val);
+});
+
+test('group by nested count', () => {
+    const val = {};
+    small_data.forEach(item => {
+        const v = item.favoriteFruit.apple.toFixed(1);
+        if (val[v] === undefined) {
+            val[v] = 1;
+        } else {
+            val[v] += 1;
+        }
+    });
+
+    expect(
+        new Query("$group_by('favoriteFruit.apple.$round(1)', true)").single(small_data)
+    ).toStrictEqual(val);
+});
+
+test('sort flat', () => {
+    const items = [];
+    for (let i = 0; i < 10; i++) {
+        items.push(Math.floor(Math.random() * 100));
+    }
+    
+    const result = new Query('$sort').single(items);
+    items.sort((a, b) => {
+        return a - b;
+    });
+    expect(
+        result
+    ).toStrictEqual(items);
+});
+
+test('sort age', () => {    
+    expect(
+        new Query('$sort("age")').single(small_data)
+    ).toStrictEqual(small_data.map(item => item).sort((a, b) => {
+        return (a.age < b.age) ? -1 : 1
+    }));
+});
+
+test('sort nested', () => {    
+    expect(
+        new Query("$sort('favoriteFruit.banana.$multiply(-0.5)')").single(small_data)
+    ).toStrictEqual(small_data.map(item => item).sort((a, b) => {
+        return (a.favoriteFruit.banana * -0.5 < b.favoriteFruit.banana * -0.5) ? -1 : 1;
+    }));
+});
+
+test('sort nested reverse', () => {    
+    expect(
+        new Query("$sort('favoriteFruit.banana.$multiply(-0.5)', true)").single(small_data)
+    ).toStrictEqual(small_data.map(item => item).sort((a, b) => {
+        return (a.favoriteFruit.banana * -0.5 < b.favoriteFruit.banana * -0.5) ? 1 : -1;
+    }));
+});
+
+test('special not found error', () => {
+    expect(() => {
+        new Query("age.$mixedup").single(small_data[0])
+    }).toThrow(SpecialNotFoundError);
+});
+
+test('dict from items', () => {
+    expect(
+        new Query('favoriteFruit.$items.$dict').single(small_data[0])
+    ).toStrictEqual(small_data[0].favoriteFruit);
+});

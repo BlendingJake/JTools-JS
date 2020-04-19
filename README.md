@@ -12,17 +12,17 @@
   * `new Filter(Key("data.timestamp.$parse_timestamp.$attr('year')").gt(2015)).many(data)`
 * `Formatter`: Take multiple queries and format them into a string
   * `new Formatter("Item @data.id was released in @data.timestamp.$parse_timestamp.$call('year')").single(data[0])`
->
+
 >A companion to the Python version of this package: JTools (https://pypi.org/project/jtools/).
 >The Python version supports almost the exact same specials, filters, and formatting specification, with the
 >goal of making it a seamless experience to go from querying/filtering/formatting in JavaScript to Python and back.
 >
 >This module is written originally in TypeScript and declaration files are included in the distribution.
->The module is transpiled to ES6.
+>The module is compiled to ES6.
 
 ##### Difference from JTools-Py
 
- * In JTools-Py, `==` and `===` will behave the same, as well as `!=` and `!==`. 
+ * In JTools-Py, the `==` and `===` filter operators will behave the same, as well as `!=` and `!==`. 
  * JTools-Py uses the `datetime` package, while this version uses `moment`
  * JTools-Py replicates JavaScript's default lack of differentiation between `item[0]` and `item["0"]` by default. 
  However, this can be changed in the Python version by setting `Query(..., convert_ints=False)`. 
@@ -30,16 +30,27 @@
  but not on `{"item": {0: ...}}`. The JavaScript version essentially always has `convert_ints=True`.
 
 ## Recent Changes
- * `1.1.2`
-   * Version `1.1.1` was skipped to keep on track with `JTools-Py`
-   * Catch and handle `Extraneous Input Error`
-   * Change `JQL` so that field and special names must only contain `[-a-zA-Z0-9_]`. `$index` can be used to get fields
-   with prohibited characters. The change was to support more formatting use-cases, like `Age: @age, DOB: @dob`, which 
-   previously would have failed because the `,` would have been considered part of the field name.
-   * Change `Formatter` so that `fallback` is just a string that is substituted for invalid queries, instead of being
-   the entire return value. Previously, `"Age: @missing"` would result in `None`, not it results in `"Age: <missing>"`.
-   This change allows for better debugging as it becomes clear exactly which queries are failing.
-   * Add function docstrings
+ * `1.1.3`
+  * Changed the behavior of `new Query("")`, from returning the fallback value, to returning the source data element itself.
+  For example, `new Query("").single(data) === data`.
+  * Added `SpecialNotFoundError`, which is raised when an invalid special is queried. Can be imported as 
+  `import { SpecialNotFoundError } from "@blending_jake/jtools";`
+  * Added new specials
+   * `$store_as(name)` Store the current query value in the current context for later use in the query. This does not 
+   change the underlying data being queried.
+   * `$group_by(key="", count=false)` Take an incoming list and group the values by the specified key.
+   Any valid JQL query can be used for the key, so `""` means the value itself. The result by default will be
+   keys to a list of values. However, if `count=true`, then the result will be keys to the number of elements with each 
+   key.
+   * `$sort(key="", reverse=false)` Sort an incoming list of values by a given key which can be any valid JQL query.
+   By default, `key=""` means the top-level value will be sorted on.
+   * `$dict` Take an incoming list of `(key, value)` pairs and make a dict out of them.
+   * `$join_arg(arg, sep=', ')` Similar to `$join` except this operates on an argument instead of the query value.
+   Essentially a shortened form of `$inject(arg).$join(sep)`.
+  * Changed the underlying special function definition to now include the keyword argument `context`. This argument is 
+  implemented to only be accessed by name to avoid collision if the user provides too many arguments in their query. 
+  The purpose of the context is to support specials adding values temporarily to the data
+  namespace of the query, like `$store_as` does.
   
 ## Glossary
  * [`Installation`](#install)
@@ -140,7 +151,7 @@ results in `"red"`
  
  * More specials can be added by using the class attribute `.register_special()` 
  like so: `Query.register_special(<name>, <func>)`. The function should take
- at least one argument, which is the current value in the query string: `(value, ...args) => { ... }`
+ at least two arguments, which is the current value in the query string: `(value, context, ...args) => { ... }`
  
 #### <a name="specials">Specials</a>
 General
@@ -148,6 +159,12 @@ General
   * `$lookup(map: dict, fallback=None) -> any`: Lookup the current value in the provided map/dict 
   * `$inject(value: any) -> any`: Inject a value into the query
   * `$print -> any`: Print the current query value before continuing to pass that value along
+  * `$store_as(name: str) -> any`: Store the current query value in the current context for later use in the query. This does not 
+   change the underlying data being queried.
+  * `$group_by(key="", count=false) -> {[key: any]: any[] | number}`: Take an incoming list and group the values 
+  by the specified key. Any valid JQL query can be used for the key, so `""` means the value itself. 
+  The result by default will be keys to a list of values. However, if `count=true`, then the result will be keys 
+  to the number of elements with each key.
   
 Maps
  * `$keys -> any[]`
@@ -171,6 +188,7 @@ Type Conversions
   * `$set -> Set`
   * `$float -> number`
   * `$string -> str`
+  * `$dict -> {[key: any]: any}`: Take an incoming list of `(key, value)` pairs and make a object out of them.
   * `$int -> number`
   * `$not -> bool`: Returns `!value`
   * `$fallback(fallback) -> value or fallback`: If the value is None, then it will be replaced with `fallback`.
@@ -210,10 +228,14 @@ Strings
 Lists
   * `$sum -> number`: Return the sum of the items in the value
   * `$join(sep=", ") -> string`: Join a list using the specified separator
+  * `$join_arg(arg: any[], sep=", ")`: Similar to `$join` except this operates on an argument instead of the query value.
+  Essentially a shortened form of `$inject(arg).$join(sep)`.
   * `$index(index) -> any`: Index a list. Negative indices are allowed.
   * `$range(start, end=undefined) -> `: Get a sublist. Defaults to `value.slice(start)`, 
   but an end value can be specified. Negative indices are allowed. 
   * `$remove_nulls -> any[]`: Remove any values that are `null` or `undefined`
+  * `$sort(key="", reverse=false)`: Sort an incoming list of values by a given key which can be any valid JQL query.
+  By default, `key=""` means the top-level value will be sorted on.
   * `$map(special, ...args) -> any[]`: Apply `special` to every element in the 
   value. Arguments can be passed through to the special being used.
   
@@ -430,6 +452,17 @@ items.forEach(item => {
  * reusing `Formatter` can improve performance by 210x.
 
 ## Changelog
+ * `1.1.2`
+   * Version `1.1.1` was skipped to keep on track with `JTools-Py`
+   * Catch and handle `Extraneous Input Error`
+   * Change `JQL` so that field and special names must only contain `[-a-zA-Z0-9_]`. `$index` can be used to get fields
+   with prohibited characters. The change was to support more formatting use-cases, like `Age: @age, DOB: @dob`, which 
+   previously would have failed because the `,` would have been considered part of the field name.
+   * Change `Formatter` so that `fallback` is just a string that is substituted for invalid queries, instead of being
+   the entire return value. Previously, `"Age: @missing"` would result in `None`, not it results in `"Age: <missing>"`.
+   This change allows for better debugging as it becomes clear exactly which queries are failing.
+   * Add function docstrings
+
  * `1.1.0`
    * Rename `Getter` to `Query` to more accurately describe what the class does
    * Migrate queries to use `JQL`

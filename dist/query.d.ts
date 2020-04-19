@@ -11,8 +11,12 @@ export declare class Query {
      * @param fallback A fallback vlaue that will be used if a field cannot be found
      */
     constructor(query: string | string[] | JQLQuery | JQLQuery[], fallback?: any);
-    _query(value: any, query: JQLQuery): any;
-    _value(value: any, q_or_v: JQLQuery | JQLValue): any;
+    _query(value: any, query: JQLQuery, context: {
+        [key: string]: any;
+    }): any;
+    _value(value: any, q_or_v: JQLQuery | JQLValue, context: {
+        [key: string]: any;
+    }): any;
     /**
      * Query the item
      * @param item The item to query
@@ -33,5 +37,8 @@ export declare class Query {
      * @returns Whether or not the special could be registered
      */
     static register_special(name: string, func: SpecialFunction): boolean;
+}
+export declare class SpecialNotFoundError extends Error {
+    constructor(special: string);
 }
 export {};
