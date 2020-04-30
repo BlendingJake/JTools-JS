@@ -47,7 +47,7 @@ const SPECIALS = {
         });
         return out;
     },
-    // maps
+    // maps/objects
     keys: (value, context) => { return Object.keys(value); },
     values: (value, context) => { return Object.keys(value).map(key => value[key]); },
     items: (value, context) => { return Object.keys(value).map(key => [key, value[key]]); },
@@ -63,6 +63,16 @@ const SPECIALS = {
             }
         });
         return out;
+    },
+    value_map: (value, context, special, duplicate = true, ...args) => {
+        let data = value;
+        if (duplicate) {
+            data = Object.assign({}, value);
+        }
+        Object.keys(data).forEach(key => {
+            data[key] = SPECIALS[special](data[key], context, ...args);
+        });
+        return data;
     },
     // type conversions
     set: (value, context) => { return new Set(value); },
@@ -107,7 +117,7 @@ const SPECIALS = {
         }
         return Math.sqrt(sum);
     },
-    math: (value, context, attr) => { return Math[attr](value); },
+    math: (value, context, attr, ...args) => { return Math[attr](value, ...args); },
     round: (value, context, n = 2) => { return value.toFixed(n); },
     // string
     prefix: (value, context, prefix) => { return `${prefix}${value}`; },
@@ -188,7 +198,7 @@ const SPECIALS = {
         return value[attr];
     }
 };
-export class Query {
+export default class Query {
     /**
      * Create a query object from a JQL query string, or a list of JQL query strings
      * @param query The JQL query string(s)
@@ -286,13 +296,15 @@ export class Query {
     /**
      * Query the item
      * @param item The item to query
+     * @param context An additional namespace that will be searched if a toplevel field name cannot
+     *      be found on the item
      * @returns A value, or list of values, depending on whether one or multiple queries are present
      */
-    single(item) {
+    single(item, context = {}) {
         let values = [];
         this.parts.forEach(query => {
             if (query !== null) {
-                values.push(this._query(item, query, {}));
+                values.push(this._query(item, query, context));
             }
             else {
                 values.push(this.fallback);
@@ -303,10 +315,12 @@ export class Query {
     /**
      * Query the items
      * @param items The items to query
+     * @param context An additional namespace that will be searched if a toplevel field name cannot
+     *      be found on the item currently being queried
      * @returns A list of values or list of lists of values, depending on wehther one or multiple queries are present
      */
-    many(items) {
-        return items.map(item => this.single(item));
+    many(items, context = {}) {
+        return items.map(item => this.single(item, context));
     }
     /**
      * Register a new special that can be accessed with $<name>.
@@ -326,6 +340,7 @@ export class Query {
         }
     }
 }
+export { Query };
 export class SpecialNotFoundError extends Error {
     constructor(special) {
         super(`'${special}' is not a valid special. Valid options are ${Object.keys(SPECIALS)}`);

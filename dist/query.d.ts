@@ -1,6 +1,8 @@
 import { JQLQuery, JQLValue } from "./grammar/jql";
-declare type SpecialFunction = (value: any, ...args: any[]) => any;
-export declare class Query {
+export declare type SpecialFunction = (value: any, context: {
+    [key: string]: any;
+}, ...args: any[]) => any;
+export default class Query {
     private readonly multiple;
     private readonly queries;
     private readonly fallback;
@@ -20,15 +22,23 @@ export declare class Query {
     /**
      * Query the item
      * @param item The item to query
+     * @param context An additional namespace that will be searched if a toplevel field name cannot
+     *      be found on the item
      * @returns A value, or list of values, depending on whether one or multiple queries are present
      */
-    single(item: any): any | any[];
+    single(item: any, context?: {
+        [key in string | number]: any;
+    }): any | any[];
     /**
      * Query the items
      * @param items The items to query
+     * @param context An additional namespace that will be searched if a toplevel field name cannot
+     *      be found on the item currently being queried
      * @returns A list of values or list of lists of values, depending on wehther one or multiple queries are present
      */
-    many(items: any[]): any[] | any[][];
+    many(items: any[], context?: {
+        [key in string | number]: any;
+    }): any[] | any[][];
     /**
      * Register a new special that can be accessed with $<name>.
      * The function should take at least one argument, which will be the current value in query.
@@ -38,7 +48,7 @@ export declare class Query {
      */
     static register_special(name: string, func: SpecialFunction): boolean;
 }
+export { Query };
 export declare class SpecialNotFoundError extends Error {
     constructor(special: string);
 }
-export {};

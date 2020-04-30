@@ -1,4 +1,4 @@
-import { Filter, Key } from "../dist";
+import { Filter, Key, Condition } from "../dist";
 let small_data = require("./data/20.json");
 
 test("test nested", () => {
@@ -15,6 +15,16 @@ test("test eye color", () => {
 test("test eye color - raw filters", () => {
     let items = new Filter([{field: "eyeColor", operator: "==", value: "brown"}]).many(small_data);
     expect(items.length).toStrictEqual(6);
+});
+
+test('filter by index', () => {
+    expect(new Filter(Condition.ander(Key("INDEX").gte(5), Key("INDEX").lt(7))).many(small_data)).toStrictEqual(
+        small_data.slice(5, 7)
+    );
+
+    expect(new Filter(Key("INDEX").interval(1, 5)).many(small_data)).toStrictEqual(
+        small_data.slice(1, 6)
+    );
 });
 
 test("test split convert", () => {
@@ -332,4 +342,26 @@ test("missing", () => {
     expect(
         new Filter(Key("invalid").eq("7"), false, true).many(small_data).length
     ).toStrictEqual(20);
+});
+
+test("filter traversal", () => {
+    const filters = [
+        { field: "blah", operator: "===", value: "blah"},
+        { field: "blah2", operator: "===", value: "blah2"},
+        { field: "blah3", operator: "===", value: "blah3"},
+        { field: "blah4", operator: "===", value: "blah4"},
+        { field: "blah5", operator: "===", value: "blah5"},
+    ];
+
+    const condition = Condition.fromArray([
+        { or: [ filters[0], filters[1] ] },
+        { not: [ filters[2] ] },
+        { not: [ { or: [ filters[3], filters[4] ] } ] }
+    ]);
+
+    let ct = 0;
+    condition.traverse((filter) => {
+        expect(filter).toStrictEqual(filters[ct]);
+        ct += 1;
+    });
 });

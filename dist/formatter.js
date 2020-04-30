@@ -2,7 +2,7 @@ import { Query } from "./query";
 import { JQLMultiQueryBuilder } from "./grammar/antlr_jql";
 import { JQLQuery } from "./grammar/jql";
 const MISSING = "__missing__";
-export class Formatter {
+export default class Formatter {
     /**
      * Create a new Formatter for a spec string which can contain multiple JQL queries, prefixed with '@',
      * which will be used to format the output string(s).
@@ -20,7 +20,7 @@ export class Formatter {
             this.multi_query = null;
         }
     }
-    _format(mq, item) {
+    _format(mq, item, context = {}) {
         if (mq === null) {
             return this.fallback;
         }
@@ -31,7 +31,7 @@ export class Formatter {
             for (let i = 0; i < mq.queries.length; i++) {
                 part = mq.queries[i];
                 if (part instanceof JQLQuery) {
-                    v = new Query(part, MISSING).single(item);
+                    v = new Query(part, MISSING).single(item, context);
                 }
                 else {
                     v = part.text.replace("@@", "@");
@@ -49,17 +49,20 @@ export class Formatter {
     /**
      * Format a single item
      * @param item The item to format
+     * @param context An additional namespace that will be passed to the query being formatted
      * @returns The formatted string
      */
-    single(item) {
-        return this._format(this.multi_query, item);
+    single(item, context = {}) {
+        return this._format(this.multi_query, item, context);
     }
     /**
      * Format a list of items
      * @param items The items to format
+     * @param context An additional namespace that will be passed to the query being formatted
      * @returns A list of formatted strings
      */
-    many(items) {
-        return items.map(item => this._format(this.multi_query, item));
+    many(items, context = {}) {
+        return items.map(item => this._format(this.multi_query, item, context));
     }
 }
+export { Formatter };

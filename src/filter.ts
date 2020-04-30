@@ -1,31 +1,86 @@
 import { Query } from "./query";
 
-type Operator = '>' | '<' | '>=' | '<=' | '==' | '!=' | '===' | '!==' | 'in' | '!in' |
+export type Operator = '>' | '<' | '>=' | '<=' | '==' | '!=' | '===' | '!==' | 'in' | '!in' |
     'contains' | '!contains' | 'interval' | '!interval' | 'startswith' |
     'endswith' | 'present' | '!present';
 
-interface FilterCondition {
+export interface SingleFilter {
     field: string
     operator: Operator
     value: any
 }
 
-interface NotCondition {
-    not: ConditionType[]
+export interface NotCondition {
+    not: FilterCondition[]
 }
 
-interface OrCondition {
-    or: ConditionType[]
+export interface OrCondition {
+    or: FilterCondition[]
 }
 
-type ConditionType = FilterCondition | NotCondition | OrCondition | ConditionType[];
+export type FilterCondition = SingleFilter | NotCondition | OrCondition | FilterCondition[];
 
 export class Condition {
-    private output: ConditionType[];
-    constructor(field: string, operator: Operator, value: string) {
+    private output: FilterCondition[];
+    constructor(field: string, operator: Operator, value: any) {
         this.output = [
             {field: field, operator: operator, value: value}
         ];
+    }
+
+    static fromArray(conditions: FilterCondition[]): Condition {
+        const cond = new Condition("", "==", "");
+        cond.output = conditions;
+        return cond;
+    }
+
+    clone(deep: boolean = false): Condition {
+        const cond = new Condition("", "==", "");
+        if (deep) {
+            cond.output = this.deepClone(this.output);
+        } else {
+            cond.output = [...this.output];
+        }
+        return cond;
+    }
+
+    private deepClone(conditions: FilterCondition[]): FilterCondition[] {
+        return conditions.map((cond: FilterCondition): FilterCondition => {
+            if ((cond as NotCondition).not !== undefined) {
+                return { not: this.deepClone((cond as NotCondition).not) };
+            } else if ((cond as OrCondition).or !== undefined) {
+                return { or: this.deepClone((cond as OrCondition).or) };
+            } else if (Array.isArray(cond)) {
+                return this.deepClone(cond);
+            } else {
+                return { ...(cond as SingleFilter) };
+            }
+        });
+    }
+    
+    /**
+     * Traverse through the original current structure, or a duplicate one. If traversing through a duplicate,
+     * then the duplicate will be returned at the end of the call, otherwise, this will be returned. 
+     * This is comparable to a .forEach()
+     */
+    traverse(callback: (filter: SingleFilter) => void, onDuplicate: boolean = false): Condition {
+        const data = (onDuplicate === true) ? this.clone(true) : this;
+        this.traverser(data.output, callback);
+        return data;
+    }
+
+    private traverser(conditions: FilterCondition[], callback: (filter: SingleFilter) => void) {
+        conditions.forEach((cond: FilterCondition) => {
+            if ((cond as NotCondition).not !== undefined) {
+                this.traverser((cond as NotCondition).not, callback);
+            } else if ((cond as OrCondition).or !== undefined) {
+                this.traverser((cond as OrCondition).or, callback);
+            } else if (Array.isArray(cond)) {
+                this.traverser(cond, callback);
+            } else {
+                callback(cond as SingleFilter);
+            }
+        });
     }
 
     toString(): string {
@@ -40,8 +95,12 @@ export class Condition {
         return this;
     }
 
+    static ander(cond1: Condition, cond2: Condition, ...conditions: Condition[]): Condition {
+        return cond1.clone().and_(cond2, ...conditions);
+    }
+
     or_(...args: Condition[]): Condition {
-        let temp: ConditionType[];
+        let temp: FilterCondition[];
         for (let a of args) {
             temp = [];
             [this, a].forEach(item => {
@@ -62,17 +121,27 @@ export class Condition {
         return this;
     }
 
+    static orer(cond1: Condition, cond2: Condition, ...conditions: Condition[]): Condition {
+        return cond1.clone().or_(cond2, ...conditions);
+    }
+
     not_(): Condition {
-        this.output = [{not: this.output}];
+        // If trying to double-negate
+        if (this.output.length === 1 && (this.output[0] as NotCondition).not !== undefined) {
+            this.output = (this.output[0] as NotCondition).not;
+        } else {
+            this.output = [{not: this.output}];
+        }
+
         return this;
     }
 
-    filters(): ConditionType[] {
+    filters(): FilterCondition[] {
         return this.output;
     }
 }
 
-class ValueLessCondition {
+export class ValueLessCondition {
     private field: string;
     private op: Operator;
 
@@ -92,19 +161,19 @@ class _Key {
         this.field = field;
     }
 
-    gt(other: any): Condition {
+    gt(other: number): Condition {
         return new Condition(this.field, ">", other);
     }
 
-    lt(other: any): Condition {
+    lt(other: number): Condition {
         return new Condition(this.field, "<", other);
     }
 
-    gte(other: any): Condition {
+    gte(other: number): Condition {
         return new Condition(this.field, ">=", other);
     }
 
-    lte(other: any): Condition {
+    lte(other: number): Condition {
         return new Condition(this.field, "<=", other);
     }
 
@@ -140,20 +209,20 @@ class _Key {
         return new Condition(this.field, "!contains", other);
     }
 
-    interval(other: any): Condition {
-        return new Condition(this.field, "interval", other);
+    interval(valuesOrMin: [number, number] | number, max: number = null): Condition {
+        return new Condition(this.field, "interval", (Array.isArray(valuesOrMin)) ? valuesOrMin : [valuesOrMin, max]);
     }
 
-    not_interval(other: any): Condition {
-        return new Condition(this.field, "!interval", other);
+    not_interval(valuesOrMin: [number, number] | number, max: number = null): Condition {
+        return new Condition(this.field, "!interval", (Array.isArray(valuesOrMin)) ? valuesOrMin : [valuesOrMin, max]);
     }
 
-    startswith(other: any): Condition {
-        return new Condition(this.field, "startswith", other);
+    startswith(prefix: string): Condition {
+        return new Condition(this.field, "startswith", prefix);
     }
 
-    endswith(other: any): Condition {
-        return new Condition(this.field, "endswith", other);
+    endswith(suffix: string): Condition {
+        return new Condition(this.field, "endswith", suffix);
     }
 
     present(): Condition {
@@ -173,11 +242,11 @@ export function Key(field: string): _Key {
     return new _Key(field);
 }
 
-type FilterFunction = {
+export type FilterFunction = {
     [key in Operator]: (field_value: any, value: any) => any;
 };
 
-const _filters: FilterFunction = {
+export const FILTER_OPERATIONS: FilterFunction = {
     ">": (field_value, value) => { return field_value > value; },
     "<": (field_value, value) => { return field_value < value; },
     ">=": (field_value, value) => { return field_value >= value; },
@@ -236,8 +305,8 @@ const _filters: FilterFunction = {
 
 const MISSING = "__missing__";
 
-export class Filter {
-    private readonly filters: ConditionType[];
+export default class Filter {
+    private readonly filters: FilterCondition[];
     private readonly queries: {[key: string]: Query};
     private readonly empty_filters_response: boolean;
     private readonly missing_field_response: boolean;
@@ -249,8 +318,11 @@ export class Filter {
      * returning all items for empty filters, or returning none.
      * @param missing_field_response What is returned for a filter if the field was not present
      */
-    constructor(filters: Condition | ConditionType[], empty_filters_response: boolean=true, 
-        missing_field_response: boolean=false) {
+    constructor(
+        filters: Condition | FilterCondition[], 
+        empty_filters_response: boolean=true, 
+        missing_field_response: boolean=false
+    ) {
         this.empty_filters_response = empty_filters_response;
         this.missing_field_response = missing_field_response;
 
@@ -263,24 +335,15 @@ export class Filter {
         this.queries = this._preprocess(this.filters);
     }
 
-    _preprocess(filters: ConditionType[]): {[key: string]: Query} {
-        let out = {};
-        filters.forEach(f => {
-            if (Array.isArray(f)) {
-                out = {...out, ...this._preprocess((f as ConditionType[]))};
-            } else if ((f as OrCondition).or !== undefined) {
-                out = {...out, ...this._preprocess((f as OrCondition).or)};
-            } else if ((f as NotCondition).not !== undefined) {
-                out = {...out, ...this._preprocess((f as NotCondition).not)};
-            } else if (out[(f as FilterCondition).field] === undefined) {
-                out[(f as FilterCondition).field] = new Query((f as FilterCondition).field, MISSING);
-            }
+    _preprocess(filters: FilterCondition[]): {[key: string]: Query} {
+        const out: {[key: string]: Query} = {};
+        Condition.fromArray(filters).traverse((filter) => {
+            out[filter.field] = new Query(filter.field, MISSING);
         });
-
         return out;
     }
 
-    _filter(item: any, filters: ConditionType[]=null, oring=false): boolean {
+    _filter(item: any, filters: FilterCondition[]=null, oring=false, context: {[key in string | number]: any} = {}): boolean {
         if (filters === null) {
             filters = this.filters;
         }
@@ -289,20 +352,20 @@ export class Filter {
         let c: boolean;
         let query_result: any;
         for (let f of filters) {
-            if ((f as ConditionType[]).length !== undefined) {
-                c = this._filter(item, (f as ConditionType[]));
+            if (Array.isArray(f)) {
+                c = this._filter(item, (f as FilterCondition[]), oring, context);
             } else if ((f as OrCondition).or !== undefined) {
-                c = this._filter(item, (f as OrCondition).or, true);
+                c = this._filter(item, (f as OrCondition).or, true, context);
             } else if ((f as NotCondition).not !== undefined) {
-                c = !this._filter(item, (f as NotCondition).not);
+                c = !this._filter(item, (f as NotCondition).not, oring, context);
             } else {
-                query_result = this.queries[(f as FilterCondition).field].single(item);
-                if (query_result === MISSING && (f as FilterCondition).operator !== 'present' && (f as FilterCondition).operator !== '!present') {
+                query_result = this.queries[(f as SingleFilter).field].single(item, context);
+                if (query_result === MISSING && (f as SingleFilter).operator !== 'present' && (f as SingleFilter).operator !== '!present') {
                     c = this.missing_field_response;
                 } else {
-                    c = _filters[(f as FilterCondition).operator](
+                    c = FILTER_OPERATIONS[(f as SingleFilter).operator](
                         query_result,
-                        (f as FilterCondition).value
+                        (f as SingleFilter).value
                     );
                 }                
             }
@@ -330,21 +393,23 @@ export class Filter {
     /**
      * Filter a single item
      * @param item The item to filter
+     * @param context An additional namespace that will be passed to the field query
      * @returns Whether or not the item meets the filter
      */
-    single(item: any): boolean {
-        return this._filter(item);
+    single(item: any, context: {[key in string | number]: any} = {}): boolean {
+        return this._filter(item, null, false, context);
     }
 
     /**
      * Filter the list of items
      * @param items The items to filter
+     * @param context An additional namespace that will be passed to the field query
      * @returns Only the items that satisfy the filter
      */
-    many(items: any[]): any[] {
+    many(items: any[], context: {[key in string | number]: any} = {}): any[] {
         let out = [];
-        items.forEach(item => {
-            if (this._filter(item) === true) {
+        items.forEach((item, index) => {
+            if (this._filter(item, null, false, { INDEX: index, ...context }) === true) {
                 out.push(item);
             }
         });
@@ -352,3 +417,5 @@ export class Filter {
         return out;
     }
 }
+
+export { Filter };

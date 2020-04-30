@@ -251,6 +251,8 @@ test("arithmetic", () => {
     expect(new Query("b.$pow(2)").single(data)).toStrictEqual(16.0);
     expect(new Query("d.$distance([0, 0])").single(data)).toStrictEqual(5.0);
     expect(new Query('e.$math("cos")').single(data)).toStrictEqual(1.0);
+    expect(new Query("a.$math('min', 3, 6)").single(data)).toStrictEqual(3);
+    expect(new Query("a.$math('min', @b, @e)").single(data)).toStrictEqual(data.b);
     expect(new Query('pi.$round').single(data)).toStrictEqual("3.14");
     expect(new Query('pi.$round(4)').single(data)).toStrictEqual("3.1416");
 });
@@ -335,6 +337,13 @@ test("list", () => {
     expect(
         new Query("a.$range(1, -1)").single(data)
     ).toStrictEqual([data.a[1], data.a[2]]);
+});
+
+test("$value_map", () => {
+    const data = { a: [1, 2, 3], b: [1, 2], c: [3, 5, 3], d: [1, 2, 5, 3, 4] };
+    expect(new Query("$value_map('length').$values").single(data)).toStrictEqual(
+        Object.keys(data).map(key => data[key].length)
+    );
 });
 
 test("$map and several more", () => {
@@ -650,3 +659,18 @@ test('dict from items', () => {
         new Query('favoriteFruit.$items.$dict').single(small_data[0])
     ).toStrictEqual(small_data[0].favoriteFruit);
 });
+
+test('context', () => {
+    expect(
+        new Query('context').single({}, { context: 5 })
+    ).toStrictEqual(5);
+
+    expect(
+        new Query('context.nested').single({}, { context: { nested: 5 } })
+    ).toStrictEqual(5);
+
+    expect(
+        new Query('overlapping').single({ overlapping: 5 }, { overlapping: "nope" })
+    ).toStrictEqual(5);
+});
+

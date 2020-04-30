@@ -30,32 +30,20 @@
  but not on `{"item": {0: ...}}`. The JavaScript version essentially always has `convert_ints=True`.
 
 ## Recent Changes
- * `1.1.3`
-   * Changed the behavior of `new Query("")`, from returning the fallback value, to returning the source data element itself.
-  For example, `new Query("").single(data) === data`.
-   * Added `SpecialNotFoundError`, which is raised when an invalid special is queried. Can be imported as 
-  `import { SpecialNotFoundError } from "@blending_jake/jtools";`
-   * Added new specials
-     * `$store_as(name)` Store the current query value in the current context for later use in the query. This does not 
-   change the underlying data being queried.
-     * `$group_by(key="", count=false)` Take an incoming list and group the values by the specified key.
-   Any valid JQL query can be used for the key, so `""` means the value itself. The result by default will be
-   keys to a list of values. However, if `count=true`, then the result will be keys to the number of elements with each 
-   key.
-     * `$sort(key="", reverse=false)` Sort an incoming list of values by a given key which can be any valid JQL query.
-   By default, `key=""` means the top-level value will be sorted on.
-     * `$dict` Take an incoming list of `(key, value)` pairs and make a dict out of them.
-     * `$join_arg(arg, sep=', ')` Similar to `$join` except this operates on an argument instead of the query value.
-   Essentially a shortened form of `$inject(arg).$join(sep)`.
-   * Changed the underlying special function definition to now include the keyword argument `context`. This argument is 
-  implemented to only be accessed by name to avoid collision if the user provides too many arguments in their query. 
-  The purpose of the context is to support specials adding values temporarily to the data
-  namespace of the query, like `$store_as` does.
+ * `1.1.4`
+   * Added `$value_map`, which allows the values on an object to be modified with a special, either in-place
+   or on a duplicate
+   * Exposed `context` so fields can manually be put into the current query space. This was already 
+   being used by `$store_as`. `context` can be passed to any `.single()` or `.many()` call.
+   * Additionally, `Filter.many()` is now placing `INDEX` into the query space to allow
+   items to be filtered by their 0-based index
+   * Exposed many of the internal TypeScript types
   
 ## Glossary
  * [`Installation`](#install)
  * [`JQL`](#jql)
  * [`Query`](#query)
+   * [`Context`](#context)
    * [`Specials`](#specials)
  * [`Filter`](#filter)
    * [`Key`](#key)
@@ -129,14 +117,20 @@ results in `"red"`
 * `query`: `str | List[str]` The field or fields to query
 * `fallback`: The value that will result if a non-existent field is queried
 
-#### `.single(item)`
+#### `.single(item, context={})`
+* `item`: The item to query
+ * `context`: See [`Context`](#context) for more details
+
 >Take a single item and query it using the query(ies) provided
 >
 >`Query(field).single(...) -> result`
 >
 >`Query([field, field, ...]).single(...) -> [result, result, ...]`
 
-#### `.many(items)`
+#### `.many(items, context={})`
+* `items`: The items to query
+* `context`: See [`Context`](#context) for more details
+
 >Take a list of items, and query each item using the query(ies) provided
 >
 >`Query(field).many(...) -> [result, result, ...]`
@@ -152,6 +146,27 @@ results in `"red"`
  * More specials can be added by using the class attribute `.register_special()` 
  like so: `Query.register_special(<name>, <func>)`. The function should take
  at least two arguments, which is the current value in the query string: `(value, context, ...args) => { ... }`
+
+#### <a name="context">Context</a>
+>Context is a way of putting temporary variables into the query search space.
+
+##### How do I add something to `context`?
+ 1. Manually introduce values through `.single(..., context)` or `.many(..., context)`.
+ 2. Use the `$store_as()` special to place a value in the current context for later use
+
+##### How do I access something in `context`?
+ 1. Any top-level field name is first looked for on the current item, then in `context`. Note, top-level means
+ it is the main query in a `Query` string, or it follows an `@`, either as an argument or in a `Formatter` string.
+ 2. It is important to note that fields on the current item will shadow fields in the context, so make sure to use unique fields.
+
+##### Ok, but give me an example.
+```javascript
+const context = {
+  NOW: Date.now() / 1000
+}
+
+new Query("NOW.$subtract(@meta.timestamp).$divide(86400).$round.$suffix(' Days Ago')").single({ ... }, context)
+```
  
 #### <a name="specials">Specials</a>
 General
@@ -166,7 +181,7 @@ General
   The result by default will be keys to a list of values. However, if `count=true`, then the result will be keys 
   to the number of elements with each key.
   
-Maps
+Maps/Objects
  * `$keys -> any[]`
   * `$values -> any[]`
   * `$items -> [key, value][]`
@@ -183,6 +198,13 @@ let data = {
 new Query('$wildcard("tag")').single(data)  // => ["run", "to-do"]
 new Query('$wildcard("tag", false)').single(data) // => [{"tag": "run"}, {"tag": "to-do", "other": "task"}]
 ```
+ * `$value_map(special, duplicate=true, ...args): {[key: any]: any}`: Go through the values on the current item in the query, applying a special
+ to each one in-place. If `duplicate=true`, then the original value will not be modified. Similar to:
+ ```javascript
+Object.keys(value).forEach(key => {
+  value[key] = SPECIALS[special](value[key], ...args);
+});
+ ```
   
 Type Conversions
   * `$set -> Set`
@@ -212,8 +234,8 @@ Math / Numbers
   * `$pow(num) -> number`
   * `$abs(num) -> number`
   * `$distance(other) -> number`: Euler distance in N-dimensions
-  * `$math(attr) -> any`: Returns `math[attr](value)`, which can be used for
-  operations like `floor`, `cos`, `sin`, etc.
+  * `$math(attr, ...args) -> any`: Returns `math[attr](value, ...args)`, which can be used for
+  operations like `floor`, `cos`, `sin`, `min`, etc.
   * `$round(n=2) -> number`
   
 Strings
@@ -274,13 +296,16 @@ Lists
  * `empty_filters_response`: `bool` Determines what gets returned when no filters are supplied.
  * `missing_field_response`: `bool` Determines the result of a filter where the field could not be found.
 
-#### `.single(item)`
+#### `.single(item, context={})`
+ * `context`: See [`Context`](#context) for more details
 >Take a single item and determine whether it satisfies the filters or not
 >
 >`Filter(filters).single(...) -> true/false`
 
-#### `.many(items)`
->Take a list of items, and returns only those which satisfy the filters
+#### `.many(items, context={})`
+ * `context`: See [`Context`](#context) for more details
+>Take a list of items, and returns only those which satisfy the filters. Note, `Filter.many()` introduces `INDEX` into
+the query namespace. Allowing items to be filtered by their 0-based index.
 >
 >`Filter(filters).many(...) -> [result, result, ...]`
 
@@ -374,10 +399,12 @@ Key('creation_time.$parse_timestamp.$call("year")').lt(2005).or_(
  * `spec`: `str` The format string
  * `fallback`: `str` The value that will be used in the formatted string if a query could not be performed. For example, if the field `missing` does exist, then the query `"Age: @missing"` will result in `"Age: <missing>"`
  
-#### `.single(item)`
+#### `.single(item, context={})`
+ * `context`: See [`Context`](#context) for more details
 > Return a formatted string or the fallback value if the query fails
 
-#### `.many(items)`
+#### `.many(items, context={})`
+ * `context`: See [`Context`](#context) for more details
 > Return a list of formatted strings or the fallback value.
 
 ### Notes
@@ -452,6 +479,28 @@ items.forEach(item => {
  * reusing `Formatter` can improve performance by 210x.
 
 ## Changelog
+ * `1.1.3`
+   * Changed the behavior of `new Query("")`, from returning the fallback value, to returning the source data element itself.
+  For example, `new Query("").single(data) === data`.
+   * Added `SpecialNotFoundError`, which is raised when an invalid special is queried. Can be imported as 
+  `import { SpecialNotFoundError } from "@blending_jake/jtools";`
+   * Added new specials
+     * `$store_as(name)` Store the current query value in the current context for later use in the query. This does not 
+   change the underlying data being queried.
+     * `$group_by(key="", count=false)` Take an incoming list and group the values by the specified key.
+   Any valid JQL query can be used for the key, so `""` means the value itself. The result by default will be
+   keys to a list of values. However, if `count=true`, then the result will be keys to the number of elements with each 
+   key.
+     * `$sort(key="", reverse=false)` Sort an incoming list of values by a given key which can be any valid JQL query.
+   By default, `key=""` means the top-level value will be sorted on.
+     * `$dict` Take an incoming list of `(key, value)` pairs and make a dict out of them.
+     * `$join_arg(arg, sep=', ')` Similar to `$join` except this operates on an argument instead of the query value.
+   Essentially a shortened form of `$inject(arg).$join(sep)`.
+   * Changed the underlying special function definition to now include the keyword argument `context`. This argument is 
+  implemented to only be accessed by name to avoid collision if the user provides too many arguments in their query. 
+  The purpose of the context is to support specials adding values temporarily to the data
+  namespace of the query, like `$store_as` does.
+
  * `1.1.2`
    * Version `1.1.1` was skipped to keep on track with `JTools-Py`
    * Catch and handle `Extraneous Input Error`

@@ -2,7 +2,7 @@ import moment from "moment";
 import { JQLQuery, JQLField, JQLSpecial, JQLValue, JQLList, JQLDict, JQLSet } from "./grammar/jql";
 import { JQLQueryBuilder, JQLParseError } from "./grammar/antlr_jql";
 
-type SpecialFunction = (value: any, ...args: any[]) => any;
+export type SpecialFunction = (value: any, context: {[key: string]: any}, ...args: any[]) => any;
 
 const SPECIALS: {[key: string]: SpecialFunction} = {
     // general
@@ -48,7 +48,7 @@ const SPECIALS: {[key: string]: SpecialFunction} = {
         return out;
     },
 
-    // maps
+    // maps/objects
     keys: (value, context) => { return Object.keys(value); },
     values: (value, context) => { return Object.keys(value).map(key => value[key]); },
     items: (value, context) => { return Object.keys(value).map(key => [key, value[key]]); },
@@ -64,6 +64,17 @@ const SPECIALS: {[key: string]: SpecialFunction} = {
             }           
         });
         return out;
+    },
+    value_map: (value, context, special, duplicate: boolean = true, ...args) => {
+        let data = value;
+        if (duplicate) {
+            data = { ...value };
+        }
+
+        Object.keys(data).forEach(key => {
+            data[key] = SPECIALS[special](data[key], context, ...args);
+        });
+        return data;
     },
 
     // type conversions
@@ -110,7 +121,7 @@ const SPECIALS: {[key: string]: SpecialFunction} = {
         }
         return Math.sqrt(sum);
     },
-    math: (value, context, attr) => { return Math[attr](value); },
+    math: (value, context, attr, ...args: any[]) => { return Math[attr](value, ...args); },
     round: (value, context, n=2) => { return value.toFixed(n); },
 
     // string
@@ -189,7 +200,7 @@ const SPECIALS: {[key: string]: SpecialFunction} = {
     }
 };
 
-export class Query {
+export default class Query {
     private readonly multiple: boolean;
     private readonly queries: string[] | JQLQuery[];
     private readonly fallback: any;
@@ -287,13 +298,15 @@ export class Query {
     /**
      * Query the item
      * @param item The item to query
+     * @param context An additional namespace that will be searched if a toplevel field name cannot
+     *      be found on the item
      * @returns A value, or list of values, depending on whether one or multiple queries are present
      */
-    single(item: any): any | any[] {
+    single(item: any, context: {[key in string | number]: any} = {}): any | any[] {
         let values = [];
         this.parts.forEach(query => {
             if (query !== null) {
-                values.push(this._query(item, query, {}));
+                values.push(this._query(item, query, context));
             } else {
                 values.push(this.fallback);
             }
@@ -305,10 +318,12 @@ export class Query {
     /**
      * Query the items
      * @param items The items to query
+     * @param context An additional namespace that will be searched if a toplevel field name cannot
+     *      be found on the item currently being queried
      * @returns A list of values or list of lists of values, depending on wehther one or multiple queries are present
      */
-    many(items: any[]): any[] | any[][] {
-        return items.map(item => this.single(item));
+    many(items: any[], context: {[key in string | number]: any} = {}): any[] | any[][] {
+        return items.map(item => this.single(item, context));
     }
 
     /**
@@ -328,6 +343,8 @@ export class Query {
         }
     }
 }
+
+export { Query };
 
 export class SpecialNotFoundError extends Error {
     constructor(special: string) {
