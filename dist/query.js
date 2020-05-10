@@ -146,7 +146,12 @@ const SPECIALS = {
     index: (value, context, index, fallback = null) => {
         try {
             if (value[index] === undefined) {
-                return fallback;
+                if (context[index] === undefined) {
+                    return fallback;
+                }
+                else {
+                    return context[index];
+                }
             }
             else {
                 return value[index];

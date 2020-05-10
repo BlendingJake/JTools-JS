@@ -10,6 +10,9 @@ export class Condition {
         cond.output = conditions;
         return cond;
     }
+    toArray() {
+        return this.output;
+    }
     clone(deep = false) {
         const cond = new Condition("", "==", "");
         if (deep) {
@@ -107,9 +110,6 @@ export class Condition {
             this.output = [{ not: this.output }];
         }
         return this;
-    }
-    filters() {
-        return this.output;
     }
 }
 export class ValueLessCondition {
@@ -259,7 +259,7 @@ export default class Filter {
         this.empty_filters_response = empty_filters_response;
         this.missing_field_response = missing_field_response;
         if (filters instanceof Condition) {
-            this.filters = filters.filters();
+            this.filters = filters.toArray();
         }
         else {
             this.filters = filters;

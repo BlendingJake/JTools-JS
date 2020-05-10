@@ -1,39 +1,46 @@
-# @blending_jake/jtools
+# JTools
 
 >JTools is a robust library for interacting with JSON-like objects:
 >providing the ability to quickly query, format, and filter JSON-like data.
 >
+>JTools is available in Python and JavaScript
+>
 >There are three main components:
 
-* `Query`: Extract and transform the value of nested fields.
-  * `new Query("data.timestamp.$parse_timestamp.$attr('year')").many(items)`
+* `Query`: Extract and transform the values of nested fields.
+  * `Query("data.timestamp.$parse_timestamp.$attr('year')").many(items)`
 * `Filter`: Combine the querying capabilities of `Query` with the ability
  to define filtering conditions to find just the elements you want.
-  * `new Filter(Key("data.timestamp.$parse_timestamp.$attr('year')").gt(2015)).many(data)`
+  * `Filter(Key("data.timestamp.$parse_timestamp.$attr('year')").gt(2015)).many(data)`
 * `Formatter`: Take multiple queries and format them into a string
-  * `new Formatter("Item @data.id was released in @data.timestamp.$parse_timestamp.$call('year')").single(data[0])`
+  * `Formatter("Item @data.id was released in @data.timestamp.$parse_timestamp.$call('year')").single(data[0])`
 
->A companion to the Python version of this package: JTools (https://pypi.org/project/jtools/).
->The Python version supports almost the exact same specials, filters, and formatting specification, with the
->goal of making it a seamless experience to go from querying/filtering/formatting in JavaScript to Python and back.
->
->This module is written originally in TypeScript and declaration files are included in the distribution.
->The module is compiled to ES6.
+JTools exists in two different langauges with almost identical names and capabilities to allow you to move between the packages seamlessly. 
 
-##### Difference from JTools-Py
+## Python - [jtools](https://pypi.org/project/jtools/)
+
+## JavaScript - [@blending_jake/jtools](https://www.npmjs.com/package/@blending_jake/jtools)
+>Written in TypeScript and distributed as an ES6 style module with type
+declaration files. 
+
+### Differences
 
  * In JTools-Py, the `==` and `===` filter operators will behave the same, as well as `!=` and `!==`. 
- * JTools-Py uses the `datetime` package, while this version uses `moment`
- * JTools-Py replicates JavaScript's default lack of differentiation between `item[0]` and `item["0"]` by default. 
+ * JTools-Py uses the `datetime` package for time related queries, while JavaScript uses `moment`
+ * JTools-Py replicates JavaScript's lack of differentiation between `item[0]` and `item["0"]` by default. 
  However, this can be changed in the Python version by setting `Query(..., convert_ints=False)`. 
  If that argument is set to `False` in Python, then `item.0` would work on `{"item": {"0": ...}}`, 
  but not on `{"item": {0: ...}}`. The JavaScript version essentially always has `convert_ints=True`.
 
 ## Recent Changes
+ * `1.1.5`
+   * Unify `README` between Python and JavaScript versions
+   * Expand documentation
+
  * `1.1.4`
-   * Added `$value_map`, which allows the values on an object to be modified with a special, either in-place
+   * Added `$value_map`, which allows the values on an map/dict/object to be modified with a special, either in-place
    or on a duplicate
-   * Exposed `context` so fields can manually be put into the current query space. This was already 
+   * Exposed `context` so additional fields can manually be put into the current query space. This was already 
    being used by `$store_as`. `context` can be passed to any `.single()` or `.many()` call.
    * Additionally, `Filter.many()` is now placing `INDEX` into the query space to allow
    items to be filtered by their 0-based index
@@ -53,8 +60,17 @@
  * [`Changelog`](#changelog)
    
 ## <a name="install">Installation</a>
+
+### Python
+`pip install jtools`
+```python
+# import
+from jtools import Query, Filter, Key, Condition, Formatter
+```
+
+### JavaScript
 `npm i @blending_jake/jtools`
-```ecmascript 6
+```javascript
 // import
 import { Query, Filter, Key, Condition, Formatter } from "@blending_jake/jtools";
 ```
@@ -113,13 +129,14 @@ results in `"red"`
 >`Query` takes the power of `JQL` and puts it into practice querying and transforming values
 >in JSON-like data. 
 
-### `new Query(query, fallback=None)`
+### `Query(query, fallback=null, [convert_ints=true (if Python)])`
 * `query`: `str | List[str]` The field or fields to query
 * `fallback`: The value that will result if a non-existent field is queried
+* `convert_ints`: Whether or not to convert any digit-only fields to integers
 
 #### `.single(item, context={})`
 * `item`: The item to query
- * `context`: See [`Context`](#context) for more details
+* `context`: See [`Context`](#context) for more details
 
 >Take a single item and query it using the query(ies) provided
 >
@@ -143,9 +160,17 @@ results in `"red"`
  * You don't have to use `()` at the end of a special if there aren't any 
  arguments, or the default arguments are acceptable.
  
- * More specials can be added by using the class attribute `.register_special()` 
- like so: `Query.register_special(<name>, <func>)`. The function should take
- at least two arguments, which is the current value in the query string: `(value, context, ...args) => { ... }`
+ * More specials can be added by using the class method `.register_special()` 
+ like so: `Query.register_special(<name>, <func>)`. The function should be formatted as such: 
+  ```python
+ # Python
+lambda value, *args, context: ...
+ ```
+ ```javascript
+// JavaScript
+(value, context, ...args) => { ... }
+ ```
+ Where `value` is the current query value, and `context` is the current context.
 
 #### <a name="context">Context</a>
 >Context is a way of putting temporary variables into the query search space.
@@ -157,10 +182,19 @@ results in `"red"`
 ##### How do I access something in `context`?
  1. Any top-level field name is first looked for on the current item, then in `context`. Note, top-level means
  it is the main query in a `Query` string, or it follows an `@`, either as an argument or in a `Formatter` string.
- 2. It is important to note that fields on the current item will shadow fields in the context, so make sure to use unique fields.
+ 2. It is important to note that fields on the current item will shadow fields in the context, so make sure to use unique field names.
 
 ##### Ok, but give me an example.
+```python
+# Python
+context = {
+  "NOW": time.time()
+}
+
+Query("NOW.$subtract(@meta.timestamp).$divide(86400).$round.$suffix(' Days Ago')").single({ ... }, context)
+```
 ```javascript
+// JavaScript
 const context = {
   NOW: Date.now() / 1000
 }
@@ -170,61 +204,78 @@ new Query("NOW.$subtract(@meta.timestamp).$divide(86400).$round.$suffix(' Days A
  
 #### <a name="specials">Specials</a>
 General
-  * `$length -> number`
-  * `$lookup(map: dict, fallback=None) -> any`: Lookup the current value in the provided map/dict 
+  * `$length -> int`
+  * `$lookup(map: dict, fallback=null) -> any`: Lookup the current value in the provided map/dict 
   * `$inject(value: any) -> any`: Inject a value into the query
   * `$print -> any`: Print the current query value before continuing to pass that value along
-  * `$store_as(name: str) -> any`: Store the current query value in the current context for later use in the query. This does not 
+  * `$store_as(name: string) -> any`: Store the current query value in the current context for later use in the query. This does not 
    change the underlying data being queried.
-  * `$group_by(key="", count=false) -> {[key: any]: any[] | number}`: Take an incoming list and group the values 
+  * `$group_by(key="", count=false) -> Dict[any: any[] | int]`: Take an incoming list and group the values 
   by the specified key. Any valid JQL query can be used for the key, so `""` means the value itself. 
   The result by default will be keys to a list of values. However, if `count=true`, then the result will be keys 
-  to the number of elements with each key.
+  to the number of elements in that group.
   
 Maps/Objects
- * `$keys -> any[]`
-  * `$values -> any[]`
-  * `$items -> [key, value][]`
-  * `$wildcard(next, just_value=true) -> any[]`: On a given map or list, go through all values and see if `next` is
+ * `$keys -> List[any]`
+  * `$values -> List[any]`
+  * `$items -> List[[any, any]]`
+  * `$wildcard(next, just_value=true) -> List[any]`: On a given map or list, go through all values and see if `next` is
   a defined field. If it is, then return just the value of `next` on that item, if `just_value=true`, or the entire 
   item otherwise. This special allows a nested field to be extracted across multiple items where it it present. 
   For example: 
+```python
+# Python
+data = {
+  "a": {"tag": "run"},
+  "b": {"tag": "to-do", "other": "task"},
+  "meta": None
+}
+Query('$wildcard("tag")').single(data)  # => ["run", "to-do"]
+Query('$wildcard("tag", false)').single(data) # => [{"tag": "run"}, {"tag": "to-do", "other": "task"}]
+```
 ```javascript
+// JavaScript
 let data = {
-    "a": {"tag": "run"},
-    "b": {"tag": "to-do", "other": "task"},
-    "meta": None
+  "a": {"tag": "run"},
+  "b": {"tag": "to-do", "other": "task"},
+  "meta": null
 }
 new Query('$wildcard("tag")').single(data)  // => ["run", "to-do"]
 new Query('$wildcard("tag", false)').single(data) // => [{"tag": "run"}, {"tag": "to-do", "other": "task"}]
 ```
- * `$value_map(special, duplicate=true, ...args): {[key: any]: any}`: Go through the values on the current item in the query, applying a special
+ * `$value_map(special, duplicate=true, ...args): Dict[any: any]`: Go through the values on the current item in the query, applying a special
  to each one in-place. If `duplicate=true`, then the original value will not be modified. Similar to:
+ ```python
+# Python
+for key in value:
+    value[key] = SPECIALS[special](value[key], *args)
+ ```
  ```javascript
+ // JavaScript
 Object.keys(value).forEach(key => {
-  value[key] = SPECIALS[special](value[key], ...args);
+    value[key] = SPECIALS[special](value[key], ...args);
 });
  ```
   
 Type Conversions
-  * `$set -> Set`
-  * `$float -> number`
+  * `$set -> set`
+  * `$float -> float`
   * `$string -> str`
-  * `$dict -> {[key: any]: any}`: Take an incoming list of `(key, value)` pairs and make a object out of them.
-  * `$int -> number`
-  * `$not -> bool`: Returns `!value`
-  * `$fallback(fallback) -> value or fallback`: If the value is None, then it will be replaced with `fallback`.
+  * `$dict -> Dict[any: any]`: Take an incoming list of `(key, value)` pairs and make a map/dict/object out of them.
+  * `$int -> int`
+  * `$not -> bool`: Returns `not value` or `!value`
+  * `$fallback(fallback) -> value or fallback`: If the value is `null`, then it will be replaced with `fallback`.
   * `$ternary(if_true, if_false, strict=false) -> any`: Return `if_true` if the value is `truish`, otherwise,
-  return `if_false`. Pass `true` for `strict` if the value must be `True` and not just `truish`.`truish`.
+  return `if_false`. Pass `true` for `strict` if the value must be `true` and not just `truish`.
   
 Datetime 
-  * `$parse_timestamp -> moment`: Take a Unix timestamp in seconds and return a corresponding moment object
-  * `$strptime(fmt=None) -> moment`: Parse a datetime string and return a corresponding moment object.
-  If `fmt=None`, then ISO formats will be tried. Refer to 
-  https://momentjs.com/docs/#/parsing/string-format/ for formatting instructions
-  * `$timestamp -> number`: Dump a moment object to a UTC timestamp as the number of seconds since the Unix Epoch
-  * `$strftime(fmt="YYYY-MM-DD[T]HH:mm:ss[Z]") -> str`: Format a moment object as a string using `fmt`.
-  Refer to https://momentjs.com/docs/#/displaying/format/ for formatting instructions
+  * `$parse_timestamp -> datetime or moment`: Take a Unix timestamp in seconds and return a corresponding datetime/moment object
+  * `$strptime(fmt=null) -> datetime or moment`: Parse a datetime string and return a corresponding datetime/moment object.
+  If `fmt=None`, then standard formats will be tried. Refer to [datetime](#https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior) or 
+  [moment](#https://momentjs.com/docs/#/parsing/string-format/) for formatting instructions
+  * `$timestamp -> int`: Dump a datetime/moment object to a UTC timestamp as the number of seconds since the Unix Epoch
+  * `$strftime(fmt="%Y-%m-%dT%H:%M:%SZ" or "YYYY-MM-DD[T]HH:mm:ss[Z]") -> string`: Format a datetime/moment object as a string using `fmt`. Refer to [datetime](#https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior) or 
+  [moment](#https://momentjs.com/docs/#/parsing/string-format/) for formatting instructions
   
 Math / Numbers
   * `$add(num) -> number`
@@ -233,7 +284,7 @@ Math / Numbers
   * `$divide(num) -> number`
   * `$pow(num) -> number`
   * `$abs(num) -> number`
-  * `$distance(other) -> number`: Euler distance in N-dimensions
+  * `$distance(other) -> float`: Euler distance in N-dimensions
   * `$math(attr, ...args) -> any`: Returns `math[attr](value, ...args)`, which can be used for
   operations like `floor`, `cos`, `sin`, `min`, etc.
   * `$round(n=2) -> number`
@@ -241,11 +292,11 @@ Math / Numbers
 Strings
   * `$prefix(prefix) -> string`: Prefix the value with the specified string
   * `$suffix(suffix) -> string`: Concatenate a string to the end of the value
-  * `$wrap(prefix, suffix) -> str`: Wrap a string with a prefix and suffix. Combines features of above two specials.
+  * `$wrap(prefix, suffix) -> string`: Wrap a string with a prefix and suffix. Combines features of above two specials.
   * `$strip -> string`: Strip leading and trailing whitespace
   * `$replace(old, new) -> string`: Replace all occurrences of a string 
   * `$trim(length=50, suffix="...") -> string`: Trim the length of a string
-  * `$split(on=" ") -> string[]`: Split a string
+  * `$split(on=" ") -> List[string]`: Split a string
   
 Lists
   * `$sum -> number`: Return the sum of the items in the value
@@ -253,17 +304,17 @@ Lists
   * `$join_arg(arg: any[], sep=", ")`: Similar to `$join` except this operates on an argument instead of the query value.
   Essentially a shortened form of `$inject(arg).$join(sep)`.
   * `$index(index) -> any`: Index a list. Negative indices are allowed.
-  * `$range(start, end=undefined) -> `: Get a sublist. Defaults to `value.slice(start)`, 
+  * `$range(start, end=null) -> List[any]`: Get a sublist. Defaults to `value.slice(start)`, 
   but an end value can be specified. Negative indices are allowed. 
-  * `$remove_nulls -> any[]`: Remove any values that are `null` or `undefined`
-  * `$sort(key="", reverse=false)`: Sort an incoming list of values by a given key which can be any valid JQL query.
+  * `$remove_nulls -> List[any]`: Remove any values that are `None` if Python, or `null` and `undefined` if JavaScript
+  * `$sort(key="", reverse=false) -> List[any]`: Sort an incoming list of values by a given key which can be any valid JQL query.
   By default, `key=""` means the top-level value will be sorted on.
-  * `$map(special, ...args) -> any[]`: Apply `special` to every element in the 
+  * `$map(special, ...args) -> List[any]`: Apply `special` to every element in the 
   value. Arguments can be passed through to the special being used.
   
  Attributes
-  * `$call(func, ...args) -> any`: Call a function that is on the current value, implemented as `value[func](...args)`
-  * `$attr(attr) -> any`: Access an attribute of the given object, implemented as `value[attr]`
+  * `$call(func, ...args) -> any`: Call a function that is on the current value, implemented as `getattr(value, func)(*args)` and `value[func](...args)`
+  * `$attr(attr) -> any`: Access an attribute of the given object, implemented as `getattr(value, attr)` and `value[attr]`
 
 
 ## <a name="filter">Filter</a>
@@ -272,8 +323,8 @@ Lists
 >interest. The filters can be manually built, or the `Key` and `Condition` classes can 
 >be used to simplify your code.
 
-### `new Filter(filters, empty_filters_response=true, missing_field_response=false)`
- * `filters`: `Condition | object[]` The filters to apply to any data. If `object[]`, then the
+### `new Filter(filters, [convert_ints=true (if Python)], empty_filters_response=true, missing_field_response=false)`
+ * `filters`: `Condition | List[dict]` The filters to apply to any data. If `List[dict]`, then the
  filters should be formatted as shown below.
 ```
 [
@@ -293,6 +344,8 @@ Lists
 <op>: See list below
 <value>: Anything that makes sense for the operator
 ``` 
+ * `convert_ints`: `bool` Corresponds with the argument with the same name in `Query`. Determines
+ whether digit only fields are treated as integers or strings. Defaults to `true`.
  * `empty_filters_response`: `bool` Determines what gets returned when no filters are supplied.
  * `missing_field_response`: `bool` Determines the result of a filter where the field could not be found.
 
@@ -300,7 +353,7 @@ Lists
  * `context`: See [`Context`](#context) for more details
 >Take a single item and determine whether it satisfies the filters or not
 >
->`Filter(filters).single(...) -> true/false`
+>`Filter(filters).single(...) -> boolean`
 
 #### `.many(items, context={})`
  * `context`: See [`Context`](#context) for more details
@@ -354,34 +407,55 @@ Operators:
 
 Operators: 
 
-| underlying operator | `Key` function |
-| ------------------- | -------- |
-| `>` | `gt` | 
-| `<` | `lt` |
-| `<=` | `lte` |
-| `>=` | `gte` |
-| `==` | `eq` |
-| `!=` | `ne` |
-| `===` | `seq` |
-| `!==` | `sne` |
-| `in` | `in_` |
-| `!in` | `nin` |
-| `contains` | `contains` | 
-| `!contains` | `not_contains` |
-| `interval` | `interval` |
-| `!interval` | `not_interval` |
-| `startswith` | `startswith` |
-| `endswith` | `endswith` |
-| `present` | `present` |
-| `!present` | `not_present` |
+| underlying operator | `Key` function | `Python` operator |
+| ------------------- | -------- | -------- |
+| `>` | `gt` | `>` | 
+| `<` | `lt` | `<` | 
+| `<=` | `lte` | `<=` | 
+| `>=` | `gte` | `>=` | 
+| `==` | `eq` | `==` | 
+| `!=` | `ne` | `!=` | 
+| `===` | `seq` | N/A |
+| `!==` | `sne` | N/A
+| `in` | `in_` | N/A | 
+| `!in` | `nin` | N/A | 
+| `contains` | `contains` | N/A | 
+| `!contains` | `not_contains` | N/A | 
+| `interval` | `interval` | N/A |
+| `!interval` | `not_interval` | N/A |
+| `startswith` | `startswith` | N/A | 
+| `endswith` | `endswith` | N/A | 
+| `present` | `present` | N/A | 
+| `!present` | `not_present` | N/A | 
 
 #### <a name="condition">Condition</a>
 >Intended to be used in combination with `Key` to make creating filters
 >easier than manually creating the `JSON`. There are three conditions supported:
->`and`, `or`, and `not`. They can be manually accessed via `and_(...args)`, `or_(...args)`, and `not_()`.
+>`and`, `or`, and `not`. They can be manually accessed via `and_(...conditions)`, `or_(...conditions)`, and `not_()`.
+>
+>The conditions can also be accessed through the overloaded operators `&`, `|`, and `~`, respectively, if in Python. **Caution: `&` and `|` bind tighter than the comparisons operators and `~` binds the tightest**
+>
+>`Key("first_name") == "John" | Key("first_name") == "Bill"` is actually
+`(Key("first_name") == ("John" | Key("first_name"))) == "Bill"`, not
+`(Key("first_name") == "John") | (Key("first_name") == "Bill")`
 
->Examples
-```ecmascript 6
+Examples
+```python
+# Python
+Key("state").eq("Texas") | Key("city").eq("New York")
+
+(Key("gender") == "male") & (Key("age") >= 18) & (Key("selective_service") == False)
+
+Key('creation_time.$parse_timestamp.$attr("year")').lt(2005).or_(
+    Key('creation_time.$parse_timestamp.$attr("year")').gt(2015)
+).and_(
+    Key("product_id") == 15
+)
+# (year < 2005 OR year > 2015) AND product_id == 15
+```
+
+```javascript
+// JavaScript
 Key('creation_time.$parse_timestamp.$call("year")').lt(2005).or_(
     Key('creation_time.$parse_timestamp.$call("year")').gt(2015)
 ).and_(
@@ -395,9 +469,10 @@ Key('creation_time.$parse_timestamp.$call("year")').lt(2005).or_(
 >`new Formatter('Name: @name}').single({"name": "John Smith"})` results in
 >`Name: John Smith`.
 
-### `Formatter(spec, fallback="<missing>")`
+### `Formatter(spec, fallback="<missing>", [convert_ints=true (if Python)])`
  * `spec`: `str` The format string
  * `fallback`: `str` The value that will be used in the formatted string if a query could not be performed. For example, if the field `missing` does exist, then the query `"Age: @missing"` will result in `"Age: <missing>"`
+ * `convert_ints`: `bool` Whether digit-only fields get treated as integers or strings
  
 #### `.single(item, context={})`
  * `context`: See [`Context`](#context) for more details
@@ -417,8 +492,27 @@ Key('creation_time.$parse_timestamp.$call("year")').lt(2005).or_(
  For example, `'@name @age'` -> `'name.$suffix(" ").$suffix(@age)'`. However, the latter is much longer than the former
  
 Example (flattening operations):
-```ecmascript 6
-let errors = {
+
+```python
+# Python
+errors = {
+    "errors": {
+        "Process Error": "Could not communicate with the subprocess",
+        "Connection Error": "Could not connect with the database instance"
+    }
+}
+
+Formatter('Errors: \n@errors.$items.$map("join", ": \\n\\t").$join("\\n")').single(errors)
+# Errors:
+# Process Error: 
+#   Could not communicate with the subprocess
+# Connection Error: 
+#   Could not connect with the database instance
+```
+
+```javascript
+// JavaScript
+const errors = {
     errors: {
         "Process Error": "Could not communicate with the subprocess",
         "Connection Error": "Could not connect with the database instance"
@@ -437,8 +531,25 @@ new Formatter('Erros: @errors.$items.$map("join", ": \\n\\t").$join("\\n")}').si
 >joining all the errors together.
 
 Example (nested replacement):
-```ecmascript 6
-let item = {
+
+```python
+# Python
+item = {
+    "x1": 1,
+    "y1": 1,
+    "x2": 12,
+    "y2": 54
+}
+
+Formatter(
+    "Midpoint: [@x2.$subtract(@x1).$divide(2), @y2.$subtract(@y1).$divide(2)]"
+)
+# Midpoint: [5.5, 26.5]
+```
+
+```javascript
+// JavaScript
+const item = {
     x1: 1,
     y1: 1,
     x2: 12,
@@ -456,9 +567,24 @@ new Formatter(
 >There are several ways to increase the performance of querying, filtering, and formatting. The performance gains can be had
 >by limiting the amount of times a query string has to be parsed. This means that using a `Query`,
 >`Filter`, or `Formatter` object multiple times will be faster then creating a new object every time. 
->
->For example:
+
+Examples:
+```python
+# Python
+# slower
+for item in items:
+    f = Query("timestamp.$parse_timestamp").single(item)
+    # do other stuff
+
+# faster
+query = Query("timestamp.$parse_timestamp")
+for item in items:
+    f = query.single(item)
+    # do other stuff
+```
+
 ```javascript
+// JavaScript
 // slower
 items.forEach(item => {
   let f = new Query("timestamp.$parse_timestamp").single(item);
@@ -466,7 +592,7 @@ items.forEach(item => {
 });
 
 // faster
-let query = new Query("timestamp.$parse_timestamp");
+const query = new Query("timestamp.$parse_timestamp");
 items.forEach(item => {
   let f = query.single(item);
   // do other stuff
@@ -474,9 +600,14 @@ items.forEach(item => {
 ```
 
 >Across 10,000 runs:
- * reusing `Query` can improve performance by 192
- * reusing `Filter` can improve performance by 120x
- * reusing `Formatter` can improve performance by 210x.
+* Python
+   * reusing `Query` can improve performance by 302x
+   * reusing `Filter` can improve performance by 132x
+   * reusing `Formatter` can improve performance by 377x.
+* JavaScript
+   * reusing `Query` can improve performance by 192
+   * reusing `Filter` can improve performance by 120x
+   * reusing `Formatter` can improve performance by 210x.
 
 ## Changelog
  * `1.1.3`
@@ -508,7 +639,7 @@ items.forEach(item => {
    with prohibited characters. The change was to support more formatting use-cases, like `Age: @age, DOB: @dob`, which 
    previously would have failed because the `,` would have been considered part of the field name.
    * Change `Formatter` so that `fallback` is just a string that is substituted for invalid queries, instead of being
-   the entire return value. Previously, `"Age: @missing"` would result in `None`, not it results in `"Age: <missing>"`.
+   the entire return value. Previously, `"Age: @missing"` would result in `None`, now it results in `"Age: <missing>"`.
    This change allows for better debugging as it becomes clear exactly which queries are failing.
    * Add function docstrings
 

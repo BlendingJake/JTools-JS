@@ -16,6 +16,7 @@ export declare class Condition {
     private output;
     constructor(field: string, operator: Operator, value: any);
     static fromArray(conditions: FilterCondition[]): Condition;
+    toArray(): FilterCondition[];
     clone(deep?: boolean): Condition;
     private deepClone;
     /**
@@ -31,7 +32,6 @@ export declare class Condition {
     or_(...args: Condition[]): Condition;
     static orer(cond1: Condition, cond2: Condition, ...conditions: Condition[]): Condition;
     not_(): Condition;
-    filters(): FilterCondition[];
 }
 export declare class ValueLessCondition {
     private field;

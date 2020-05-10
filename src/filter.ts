@@ -34,6 +34,10 @@ export class Condition {
         return cond;
     }
 
+    toArray(): FilterCondition[] {
+        return this.output;
+    }
+
     clone(deep: boolean = false): Condition {
         const cond = new Condition("", "==", "");
         if (deep) {
@@ -134,10 +138,6 @@ export class Condition {
         }
 
         return this;
-    }
-
-    filters(): FilterCondition[] {
-        return this.output;
     }
 }
 
@@ -327,7 +327,7 @@ export default class Filter {
         this.missing_field_response = missing_field_response;
 
         if (filters instanceof Condition) {
-            this.filters = filters.filters();
+            this.filters = filters.toArray();
         } else {
             this.filters = filters;
         }
