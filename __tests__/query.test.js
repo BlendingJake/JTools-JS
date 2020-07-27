@@ -62,6 +62,12 @@ test(".many() for missing nested field", () => {
     ).toStrictEqual(["MISSING", "MISSING", "MISSING"]);
 });
 
+test('.single() second level missing', () => {
+    expect(
+        new Query('null.3', 'MISSING').single({ 'null': [0, 1] })
+    ).toStrictEqual('MISSING');
+});
+
 test(".many() for single field", () => {
     expect(
         new Query("age", "MISSING").many(small_data.slice(0, 3))
@@ -110,6 +116,19 @@ test("test getting substring dollar amount, replacing commas, and converting to 
     ).toStrictEqual(parseFloat(small_data[0].balance.substring(1).replace(",", "")));
 });
 
+test('test arithmatic in args', () => {
+    const data = { a: 4, b: -4, c: 2.5, d: [3, 4], e: 0, pi: 3.1415926 };
+    expect(
+        new Query('$inject(@a / (@b + @c) - @pi').single(data)
+    ).toStrictEqual(data.a / (data.b + data.c) - data.pi);
+    expect(
+        new Query('$inject(@a + @b * @c ** @e').single(data)
+    ).toStrictEqual(data.a + data.b * Math.pow(data.c, data.e));
+    expect(
+        new Query('$inject((@a + @b) * @c ** @e').single(data)
+    ).toStrictEqual((data.a + data.b) * Math.pow(data.c, data.e));
+});
+
 test("$length of string", () => {
     expect(
         new Query('_id.$length').single(small_data[0])
@@ -139,6 +158,44 @@ test("$length of set", () => {
     ).toStrictEqual(set.size);
 });
 
+test('$lookup', () => {
+    const data = { a: 'query', b: 'filter' };
+    expect(
+        new Query(`field.$lookup(${JSON.stringify(data)})`).single({ field: 'a' })
+    ).toStrictEqual(data.a);
+    expect(
+        new Query(`field.$lookup(${JSON.stringify(data)}, 'missing')`).single({ field: 'c' })
+    ).toStrictEqual('missing');
+});
+
+test('$print', () => {
+    const consoleSpy = jest.spyOn(console, 'log');
+    new Query('$inject("message").$print').single({});
+    expect(consoleSpy).toHaveBeenCalledWith('message');
+});
+
+test('keyword arguments', () => {
+    const data = small_data[0];
+    expect(
+        new Query('$index("balance")').single(data)
+    ).toStrictEqual(data.balance);
+    expect(
+        new Query('$index("nope")').single(data)
+    ).toStrictEqual(null);
+    expect(
+        new Query('$index("nope", "nope")').single(data)
+    ).toStrictEqual("nope");
+    expect(
+        new Query('$index("nope", fallback="nope")').single(data)
+    ).toStrictEqual("nope");
+    expect(
+        new Query('$index("tags.0", extended=true, fallback="nope"').single(data)
+    ).toStrictEqual(data.tags[0]);
+    expect(
+        new Query('$index("tags.0", extended=true, fallback="nope"').single(data)
+    ).toStrictEqual(data.tags[0]);
+})
+
 test("$keys", () => {
     expect(
         new Query('favoriteFruit.$keys').single(small_data[0])
@@ -156,6 +213,26 @@ test("$items", () => {
         new Query('favoriteFruit.$items').single(small_data[2])
     ).toStrictEqual(Object.keys(small_data[2].favoriteFruit).map(key => [key, small_data[2].favoriteFruit[key]]));
 });
+
+test("wildcard", () => {
+    let data = {
+        "a": {"key": 8, "other": 8},
+        "b": {"key": 4},
+        "c": {"value": 5},
+        "d": 0,
+        "e": "daf",
+        "f": null,
+        "g": ["john", "susan", "carl"],
+        "h": true
+    };
+    let Q = (q) => { return new Query(q).single(data); };
+
+    expect(Q("$wildcard('key')")).toStrictEqual([data.a.key, data.b.key]);
+    expect(Q("$wildcard('key', false)")).toStrictEqual([data.a, data.b]);
+    expect(Q("$wildcard(0)")).toStrictEqual([data.e[0], data.g[0]]);
+    expect(Q("$wildcard(0, false)")).toStrictEqual([data.e, data.g]);
+});
+
 
 test("$set", () => {
     expect(
@@ -453,25 +530,6 @@ test("inject", () => {
     expect(Q('$inject({"bob": "rick"})')).toStrictEqual({bob: "rick"});
 
     expect(Q('$inject([{"bob": "rick"}, false])')).toStrictEqual([{bob: "rick"}, false]);
-});
-
-test("wildcard", () => {
-    let data = {
-        "a": {"key": 8, "other": 8},
-        "b": {"key": 4},
-        "c": {"value": 5},
-        "d": 0,
-        "e": "daf",
-        "f": null,
-        "g": ["john", "susan", "carl"],
-        "h": true
-    };
-    let Q = (q) => { return new Query(q).single(data); };
-
-    expect(Q("$wildcard('key')")).toStrictEqual([data.a.key, data.b.key]);
-    expect(Q("$wildcard('key', false)")).toStrictEqual([data.a, data.b]);
-    expect(Q("$wildcard(0)")).toStrictEqual([data.e[0], data.g[0]]);
-    expect(Q("$wildcard(0, false)")).toStrictEqual([data.e, data.g]);
 });
 
 test("remove_nulls", () => {
