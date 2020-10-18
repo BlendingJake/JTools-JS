@@ -1,4 +1,4 @@
-import { JQLQuery, JQLField, JQLSpecial, JQLList, JQLValue, JQLSet, JQLDict, JQLMultiQuery, JQLRawInput } from "./jql";
+import { JQLQuery, JQLField, JQLSpecial, JQLList, JQLValue, JQLSet, JQLDict, JQLMultiQuery, JQLRawInput, JQLArgument, JQLKeywordArgument, JQLExpression } from "./jql";
 import { JQLParser } from "./JQLParser";
 import { DefaultErrorStrategy, CommonTokenStream, ANTLRInputStream, ConsoleErrorListener } from "antlr4ts";
 import { ParseTreeWalker } from "antlr4ts/tree/ParseTreeWalker";
@@ -10,7 +10,7 @@ class JQLQueryListener {
         this.root = null;
     }
     enterQuery(ctx) {
-        let q = new JQLQuery();
+        const q = new JQLQuery();
         if (this.stack.length !== 0) {
             this.stack[this.stack.length - 1].add(q);
         }
@@ -23,12 +23,12 @@ class JQLQueryListener {
         this.stack.pop();
     }
     exitQuery_field(ctx) {
-        let f = new JQLField();
+        const f = new JQLField();
         f.set_field(ctx.text);
         this.stack[this.stack.length - 1].add(f);
     }
     enterSpecial(ctx) {
-        let s = new JQLSpecial();
+        const s = new JQLSpecial();
         this.stack[this.stack.length - 1].add(s);
         this.stack.push(s);
     }
@@ -38,33 +38,94 @@ class JQLQueryListener {
     exitSpecial_name(ctx) {
         this.stack[this.stack.length - 1].set_special(ctx.text);
     }
+    enterArgument(ctx) {
+        const arg = new JQLArgument();
+        this.stack[this.stack.length - 1].add(arg);
+        this.stack.push(arg);
+    }
+    exitArgument(ctx) {
+        this.stack.pop();
+    }
+    enterKeyword_argument(ctx) {
+        const arg = new JQLKeywordArgument();
+        this.stack[this.stack.length - 1].add(arg);
+        this.stack.push(arg);
+    }
+    exitKeyword_argument(ctx) {
+        this.stack.pop();
+    }
+    enterName(ctx) {
+        if (this.stack[this.stack.length - 1] instanceof JQLKeywordArgument) {
+            this.stack[this.stack.length - 1].set_name(ctx.text);
+        }
+    }
+    // EXPRESSIONS
+    enterArith_expr() {
+        this.enter_expr();
+    }
+    exitArith_expr() {
+        this.stack.pop();
+    }
+    enterFactor_expr() {
+        this.enter_expr();
+    }
+    exitFactor_expr() {
+        this.stack.pop();
+    }
+    enterPower_expr() {
+        this.enter_expr();
+    }
+    exitPower_expr() {
+        this.stack.pop();
+    }
+    // EXPRESSION OPERATORS
+    enterArith_operator(ctx) {
+        this.stack[this.stack.length - 1].set_operator(ctx.text);
+    }
+    enterFactor_operator(ctx) {
+        this.stack[this.stack.length - 1].set_operator(ctx.text);
+    }
+    enterPower_operator(ctx) {
+        this.stack[this.stack.length - 1].set_operator(ctx.text);
+    }
+    enterNumber(ctx) {
+        if (this.stack[this.stack.length - 1] instanceof JQLExpression) {
+            const v = new JQLValue();
+            v.value = JQLQueryListener.parse_primitive(ctx.text);
+            this.stack[this.stack.length - 1].add(v);
+        }
+    }
     enterList_value(ctx) {
         this.enter_value(JQLList);
+    }
+    exitList_value() {
+        this.stack.pop();
     }
     enterSet_value(ctx) {
         this.enter_value(JQLSet);
     }
+    exitSet_value() {
+        this.stack.pop();
+    }
     enterObject_value(ctx) {
         this.enter_value(JQLDict);
     }
+    exitObject_value() {
+        this.stack.pop();
+    }
     exitKey(ctx) {
-        let txt = ctx.text;
+        const txt = ctx.text;
         if (txt[0] !== '@') {
-            let v = new JQLValue();
+            const v = new JQLValue();
             v.value = JQLQueryListener.parse_primitive(txt);
             this.stack[this.stack.length - 1].add(v);
         }
     }
-    exitValue(ctx) {
-        let text = ctx.text;
-        if (text[0] === "[" || text[0] === "{") {
-            this.stack.pop();
-        }
-        else if (text[0] !== "@") {
-            let val = new JQLValue();
-            val.value = JQLQueryListener.parse_primitive(text);
-            this.stack[this.stack.length - 1].add(val);
-        }
+    exitPrimitive_value(ctx) {
+        const text = ctx.text;
+        const val = new JQLValue();
+        val.value = JQLQueryListener.parse_primitive(text);
+        this.stack[this.stack.length - 1].add(val);
     }
     static parse_primitive(text) {
         let value;
@@ -89,9 +150,14 @@ class JQLQueryListener {
         return value;
     }
     enter_value(cls) {
-        let v = new cls();
+        const v = new cls();
         this.stack[this.stack.length - 1].add(v);
         this.stack.push(v);
+    }
+    enter_expr() {
+        const expr = new JQLExpression();
+        this.stack[this.stack.length - 1].add(expr);
+        this.stack.push(expr);
     }
     enterJql_multi_query(ctx) {
         return;
@@ -115,7 +181,7 @@ class JQLMultiQueryListerner extends JQLQueryListener {
         this.stack.pop();
     }
     exitRaw_text(ctx) {
-        let raw = new JQLRawInput();
+        const raw = new JQLRawInput();
         raw.set_text(ctx.text);
         this.stack[this.stack.length - 1].add(raw);
     }
@@ -163,7 +229,7 @@ class Builder {
 export class JQLQueryBuilder extends Builder {
     constructor(text) {
         super(text);
-        let tree = this.parser.jql_query();
+        const tree = this.parser.jql_query();
         this.listener = new JQLQueryListener();
         this.walker = ParseTreeWalker.DEFAULT.walk(this.listener, tree);
     }
@@ -174,7 +240,7 @@ export class JQLQueryBuilder extends Builder {
 export class JQLMultiQueryBuilder extends Builder {
     constructor(text) {
         super(text);
-        let tree = this.parser.jql_multi_query();
+        const tree = this.parser.jql_multi_query();
         this.listener = new JQLMultiQueryListerner();
         this.walker = ParseTreeWalker.DEFAULT.walk(this.listener, tree);
     }

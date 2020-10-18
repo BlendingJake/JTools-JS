@@ -57,6 +57,8 @@ export default class Query {
                     let p: JQLQuery;
                     if (f === "") {
                         p = new JQLQuery();
+                    } else if (!f.includes('$')) {
+                        p = this.manuallyParse(f);
                     } else {
                         p = new JQLQueryBuilder(f).get_built_query();
                     }
@@ -67,6 +69,17 @@ export default class Query {
                 }
             }
         });
+    }
+
+    protected manuallyParse(queryString: string): JQLQuery {
+        const query = new JQLQuery();
+        queryString.split('.').forEach(part => {
+            const field = new JQLField();
+            field.set_field(part);
+            query.add(field);
+        });
+
+        return query;
     }
 
     protected query(value: any, query: JQLQuery, context: {[key: string]: any}) {
@@ -119,6 +132,7 @@ export default class Query {
     ): Args {
         const $args = [];
         const $kwargs = {};
+
         args.forEach(arg => {
             const v = this.value(value, arg.value, context);
             if (arg instanceof JQLKeywordArgument) {
@@ -148,10 +162,10 @@ export default class Query {
         const parsedArgs: Args = { $args: [], $kwargs: {}, ...((argDef) ? argDef.defaults : {}) };
 
         args.forEach((arg, index) => {
-            if (argDef.lookup[index] !== undefined) {
-                parsedArgs[argDef.lookup[index].name] = arg;
-            } else if (argDef.argsPosition !== null) {
+            if (argDef.argsPosition !== null && argDef.argsPosition <= index) {
                 parsedArgs.$args.push(arg);
+            } else if (argDef.lookup[index] !== undefined) {
+                parsedArgs[argDef.lookup[index].name] = arg;
             } else {
                 throw new UnexpectedPositionalArgument(index, special);
             }
@@ -175,7 +189,7 @@ export default class Query {
             return this.query(value, qve, context);
         } else if (qve instanceof JQLExpression) {
             if (qve.second === null) {
-                return this.value(value, qve.second, context);
+                return this.value(value, qve.first, context);
             } else {
                 return MATH_OPERATIONS[qve.operator](
                     this.value(value, qve.first, context),
@@ -340,7 +354,7 @@ export function REGISTER_DEFAULTS() {
         'group_by', (value, _, args) => {
             let getValue: (value: any) => any;
             if (typeof(args.key) === 'number') {
-                getValue = (value) => value[args.keys];
+                getValue = (value) => value[args.key];
             } else {
                 let query: Query;
                 if (QUERY_CACHE[args.key] !== undefined) {
@@ -392,7 +406,11 @@ export function REGISTER_DEFAULTS() {
             args.pipeline.forEach(stage => {
                 if ( typeof(stage) === 'string' ) {
                     localValue = SPECIALS[stage].function(localValue, context, { $args: [], $kwargs: {} });
-                } else if ( !Array.isArray(stage[stage.length-1]) ) {
+                } else if ( 
+                    !((stage[stage.length-1]) instanceof Set)
+                    && typeof(stage[stage.length-1]) === 'object' 
+                    && !Array.isArray(stage[stage.length-1]) 
+                ) {
                     localValue = SPECIALS[stage[0]].function(
                         localValue, context,
                         Query.parseArgs(stage.slice(1, stage.length-1), stage[stage.length-1], stage[0])
@@ -507,7 +525,7 @@ export function REGISTER_DEFAULTS() {
     // datetime
     Query.register_special('parse_timestamp', (value) => { return moment.unix(value).utc(); });
     Query.register_special(
-        'strptime', (value, _, args) => { return (args.fmt === null) ? moment(value) : moment(value, args.fmt); },
+        'strptime', (value, _, args) => { return (args.fmt === null) ? moment.parseZone(value) : moment.parseZone(value, args.fmt); },
         [{ name: 'fmt', default: null }]
     );
     Query.register_special('timestamp', (value) => { return value.utc().unix(); });
@@ -528,13 +546,13 @@ export function REGISTER_DEFAULTS() {
                 case 'hour':
                     return value.hours();
                 case 'day': 
-                    return value.days();
+                    return value.date();
                 case 'month':
-                    return value.month();
+                    return value.month() + 1;
                 case 'year':
                     return value.year();
                 case 'dayOfWeek':
-                    return value.weekday();
+                    return (value.days() + 6) % 7;
                 case 'dayOfYear':
                     return value.dayOfYear();
             }
@@ -575,7 +593,13 @@ export function REGISTER_DEFAULTS() {
     Query.register_special('lowercase', (value: string) => value.toLowerCase());
     Query.register_special('uppercase', (value: string) => value.toUpperCase());
     Query.register_special('titlecase', (value: string) => {
-
+        return [...value].map((letter, index, array) => {
+            if (index === 0 || array[index-1] === ' ') {
+                return letter.toUpperCase();
+            } else {
+                return letter.toLowerCase();
+            }
+        }).join('');
     });
     Query.register_special(
         'prefix', (value, _, args) => { return `${args.prefix}${value}`; },
@@ -596,8 +620,8 @@ export function REGISTER_DEFAULTS() {
     );
     Query.register_special(
         'trim', (value, _, args) => {
-            let trimmed = value.substring(0, length-args.suffix.length);
-            if (value.length > length-args.suffix.length) {
+            let trimmed = value.substring(0, args.length-args.suffix.length);
+            if (value.length > args.length-args.suffix.length) {
                 trimmed += args.suffix;
             }
             return trimmed;

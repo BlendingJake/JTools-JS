@@ -1,208 +1,18 @@
 import moment from "moment";
-import { JQLQuery, JQLField, JQLSpecial, JQLList, JQLDict, JQLSet } from "./grammar/jql";
+import { JQLQuery, JQLField, JQLSpecial, JQLList, JQLDict, JQLSet, JQLKeywordArgument, JQLExpression } from "./grammar/jql";
 import { JQLQueryBuilder } from "./grammar/antlr_jql";
-const SPECIALS = {
-    // general
-    length: (value, context) => {
-        if (value.size !== undefined) {
-            return value.size;
-        }
-        else if (value.length !== undefined) {
-            return value.length;
-        }
-        else {
-            return Object.keys(value).length;
-        }
-    },
-    lookup: (value, context, mp, fallback = null) => {
-        return (mp[value] !== undefined) ? mp[value] : fallback;
-    },
-    inject: (_, context, value) => { return value; },
-    print: (value, context) => { console.log(value); return value; },
-    store_as: (value, context, name) => {
-        context[name] = value;
-        return value;
-    },
-    group_by: (value, context, key = "", count = false) => {
-        const query = new Query(key);
-        const out = {};
-        value.map(v => {
-            const part = query.single(v);
-            if (out[part] !== undefined) {
-                if (count) {
-                    out[part] += 1;
-                }
-                else {
-                    out[part].push(v);
-                }
-            }
-            else {
-                if (count) {
-                    out[part] = 1;
-                }
-                else {
-                    out[part] = [v];
-                }
-            }
-        });
-        return out;
-    },
-    // maps/objects
-    keys: (value, context) => { return Object.keys(value); },
-    values: (value, context) => { return Object.keys(value).map(key => value[key]); },
-    items: (value, context) => { return Object.keys(value).map(key => [key, value[key]]); },
-    wildcard: (value, context, nxt, just_field = true) => {
-        let out = [];
-        Object.keys(value).forEach(key => {
-            try {
-                if (value[key][nxt] !== undefined) {
-                    out.push((just_field) ? value[key][nxt] : value[key]);
-                }
-            }
-            catch (TypeError) {
-            }
-        });
-        return out;
-    },
-    value_map: (value, context, special, duplicate = true, ...args) => {
-        let data = value;
-        if (duplicate) {
-            data = Object.assign({}, value);
-        }
-        Object.keys(data).forEach(key => {
-            data[key] = SPECIALS[special](data[key], context, ...args);
-        });
-        return data;
-    },
-    // type conversions
-    set: (value, context) => { return new Set(value); },
-    float: (value, context) => { return parseFloat(value); },
-    string: (value, context) => { return value.toString(); },
-    dict: (value, context) => {
-        const out = {};
-        value.forEach(v => {
-            out[v[0]] = v[1];
-        });
-        return out;
-    },
-    int: (value, context) => { return parseInt(value); },
-    not: (value, context) => { return !value; },
-    fallback: (value, context, fallback) => { return value || fallback; },
-    ternary: (value, context, if_true, if_false, strict = false) => {
-        if ((value && strict === false) || (value === true && strict === true)) {
-            return if_true;
-        }
-        else {
-            return if_false;
-        }
-    },
-    // datetime
-    parse_timestamp: (value, context) => { return moment.unix(value).utc(); },
-    strptime: (value, context, fmt = null) => { return (fmt === null) ? moment(value) : moment(value, fmt); },
-    timestamp: (value, context) => { return value.utc().unix(); },
-    strftime: (value, context, fmt = "YYYY-MM-DD[T]HH:mm:ss[Z]") => {
-        return value.format(fmt);
-    },
-    // math / numeric
-    add: (value, context, num) => { return value + num; },
-    subtract: (value, context, num) => { return value - num; },
-    multiply: (value, context, num) => { return value * num; },
-    divide: (value, context, num) => { return value / num; },
-    pow: (value, context, num) => { return Math.pow(value, num); },
-    abs: (value, context) => { return Math.abs(value); },
-    distance: (value, context, other) => {
-        let sum = 0;
-        for (let i = 0; i < value.length; i++) {
-            sum += Math.pow(other[i] - value[i], 2);
-        }
-        return Math.sqrt(sum);
-    },
-    math: (value, context, attr, ...args) => { return Math[attr](value, ...args); },
-    round: (value, context, n = 2) => { return value.toFixed(n); },
-    // string
-    prefix: (value, context, prefix) => { return `${prefix}${value}`; },
-    suffix: (value, context, suffix) => { return `${value}${suffix}`; },
-    wrap: (value, context, prefix, suffix) => { return `${prefix}${value}${suffix}`; },
-    strip: (value, context) => { return value.trim(); },
-    replace: (value, context, old, new_) => { return value.replace(old, new_); },
-    trim: (value, context, length = 50, suffix = "...") => {
-        let trimmed = value.substring(0, length - suffix.length);
-        if (value.length > length - suffix.length) {
-            trimmed += suffix;
-        }
-        return trimmed;
-    },
-    split: (value, context, on = " ") => { return value.split(on); },
-    // list
-    sum: (value, context) => {
-        let sum = 0;
-        value.forEach(item => { sum += item; });
-        return sum;
-    },
-    join: (value, context, sep = ", ") => { return value.join(sep); },
-    join_arg: (_, context, arg, sep = ", ") => {
-        return arg.join(sep);
-    },
-    index: (value, context, index, fallback = null) => {
-        try {
-            if (value[index] === undefined) {
-                if (context[index] === undefined) {
-                    return fallback;
-                }
-                else {
-                    return context[index];
-                }
-            }
-            else {
-                return value[index];
-            }
-        }
-        catch (TypeError) {
-            return fallback;
-        }
-    },
-    range: (value, context, start, end = undefined) => {
-        if (end !== undefined) {
-            if (end < 0) { // support negative indices
-                return value.slice(start, value.length - end);
-            }
-            else {
-                return value.slice(start, end);
-            }
-        }
-        else {
-            return value.slice(start);
-        }
-    },
-    remove_nulls: (value, context) => {
-        let out = [];
-        value.forEach(value => {
-            if (value !== null && value !== undefined) {
-                out.push(value);
-            }
-        });
-        return out;
-    },
-    sort: (value, context, key = "", reverse = false) => {
-        const query = new Query(key);
-        const multi = (reverse) ? -1 : 1;
-        return value.map(v => v).sort((a, b) => {
-            return (query.single(a) < query.single(b)) ? -1 * multi : multi;
-        });
-    },
-    map: (value, context, special, ...args) => {
-        return value.map(item => {
-            return SPECIALS[special](item, context, ...args);
-        });
-    },
-    // attribute accessing
-    call: (value, context, func, ...args) => {
-        return value[func](...args);
-    },
-    attr: (value, context, attr) => {
-        return value[attr];
-    }
+;
+const SPECIALS = {};
+const MATH_OPERATIONS = {
+    '+': (a, b) => a + b,
+    '-': (a, b) => a - b,
+    '*': (a, b) => a * b,
+    '/': (a, b) => a / b,
+    '//': (a, b) => Math.floor(a / b),
+    '**': (a, b) => Math.pow(a, b),
+    '%': (a, b) => a % b
 };
+export const QUERY_CACHE = {};
 export default class Query {
     /**
      * Create a query object from a JQL query string, or a list of JQL query strings
@@ -225,18 +35,31 @@ export default class Query {
                     if (f === "") {
                         p = new JQLQuery();
                     }
+                    else if (!f.includes('$')) {
+                        p = this.manuallyParse(f);
+                    }
                     else {
                         p = new JQLQueryBuilder(f).get_built_query();
                     }
                     this.parts.push(p);
                 }
-                catch (JQLParseError) {
+                catch (e) {
+                    console.log(e);
                     this.parts.push(null);
                 }
             }
         });
     }
-    _query(value, query, context) {
+    manuallyParse(queryString) {
+        const query = new JQLQuery();
+        queryString.split('.').forEach(part => {
+            const field = new JQLField();
+            field.set_field(part);
+            query.add(field);
+        });
+        return query;
+    }
+    query(value, query, context) {
         let og = value;
         query.parts.forEach((part, i) => {
             if (part instanceof JQLField) {
@@ -264,7 +87,7 @@ export default class Query {
             }
             else if (part instanceof JQLSpecial) {
                 if (SPECIALS[part.special] !== undefined) {
-                    value = SPECIALS[part.special](value, context, ...part.arguments.map(arg => this._value(og, arg, context)));
+                    value = SPECIALS[part.special].function(value, context, this.arguments(part.arguments, og, context, part.special));
                 }
                 else {
                     throw new SpecialNotFoundError(part.special);
@@ -273,29 +96,88 @@ export default class Query {
         });
         return value;
     }
-    _value(value, q_or_v, context) {
-        if (q_or_v instanceof JQLQuery) {
-            return this._query(value, q_or_v, context);
+    /**
+     * Collect the actual values for each argument and split them
+     * into a list for positional arguments and a map for keyword arguments.
+     * Then, evaluate that against the original definition to
+     * build the Args object which will be passed to the specials.
+     */
+    arguments(args, value, context, special) {
+        const $args = [];
+        const $kwargs = {};
+        args.forEach(arg => {
+            const v = this.value(value, arg.value, context);
+            if (arg instanceof JQLKeywordArgument) {
+                $kwargs[arg.name] = v;
+            }
+            else {
+                $args.push(v);
+            }
+        });
+        return Query.parseArgs($args, $kwargs, special);
+    }
+    /**
+     * Take list of arguments and map of keyword arguments and
+     * map them to the original argument defintion, if one was provided.
+     */
+    static parseArgs(args, kwargs, special) {
+        const argDef = SPECIALS[special].args;
+        const parsedArgs = Object.assign({ $args: [], $kwargs: {} }, ((argDef) ? argDef.defaults : {}));
+        args.forEach((arg, index) => {
+            if (argDef.argsPosition !== null && argDef.argsPosition <= index) {
+                parsedArgs.$args.push(arg);
+            }
+            else if (argDef.lookup[index] !== undefined) {
+                parsedArgs[argDef.lookup[index].name] = arg;
+            }
+            else {
+                throw new UnexpectedPositionalArgument(index, special);
+            }
+        });
+        Object.keys(kwargs).forEach(key => {
+            if (argDef.lookup[key] !== undefined) {
+                parsedArgs[key] = kwargs[key];
+            }
+            else if (argDef.kwargsPosition !== null) {
+                parsedArgs.$kwargs[key] = kwargs[key];
+            }
+            else {
+                throw new UnepectedKeywordArgument(key, special);
+            }
+        });
+        return parsedArgs;
+    }
+    value(value, qve, context) {
+        if (qve instanceof JQLQuery) {
+            return this.query(value, qve, context);
         }
-        else if (q_or_v instanceof JQLList) {
-            return q_or_v.value.map(part => this._value(value, part, context));
+        else if (qve instanceof JQLExpression) {
+            if (qve.second === null) {
+                return this.value(value, qve.first, context);
+            }
+            else {
+                return MATH_OPERATIONS[qve.operator](this.value(value, qve.first, context), this.value(value, qve.second, context));
+            }
         }
-        else if (q_or_v instanceof JQLDict) {
+        else if (qve instanceof JQLList) {
+            return qve.value.map(part => this.value(value, part, context));
+        }
+        else if (qve instanceof JQLDict) {
             let out = {};
-            q_or_v.value.forEach(kv => {
-                out[this._value(value, kv[0], context)] = this._value(value, kv[1], context);
+            qve.value.forEach(kv => {
+                out[this.value(value, kv[0], context)] = this.value(value, kv[1], context);
             });
             return out;
         }
-        else if (q_or_v instanceof JQLSet) {
+        else if (qve instanceof JQLSet) {
             let out = new Set();
-            q_or_v.value.forEach(v => {
-                out.add(this._value(value, v, context));
+            qve.value.forEach(v => {
+                out.add(this.value(value, v, context));
             });
             return out;
         }
         else {
-            return q_or_v.value;
+            return qve.value;
         }
     }
     /**
@@ -309,7 +191,7 @@ export default class Query {
         let values = [];
         this.parts.forEach(query => {
             if (query !== null) {
-                values.push(this._query(item, query, context));
+                values.push(this.query(item, query, context));
             }
             else {
                 values.push(this.fallback);
@@ -332,17 +214,52 @@ export default class Query {
      * The function should take at least one argument, which will be the current value in query.
      * @param name The name of the special - must only contain these characters: [-a-zA-Z0-9_]
      * @param func The function that will be applied to the value
+     * @param argDef A way to specify how the function will recieve its arguments to support
+     *      keyword arguments
      * @returns Whether or not the special could be registered
      */
-    static register_special(name, func) {
+    static register_special(name, func, argDef) {
         if (SPECIALS[name] === undefined) {
-            SPECIALS[name] = func;
+            SPECIALS[name] = {
+                function: func,
+                args: (argDef) ? Query.parseArgDef(argDef) : null
+            };
             return true;
         }
         else {
             console.warn(`${name} is already registered as a special value`);
             return false;
         }
+    }
+    static parseArgDef(argDef) {
+        const parsedDef = {
+            args: argDef,
+            lookup: {},
+            defaults: {},
+            argsPosition: null,
+            kwargsPosition: null
+        };
+        argDef.forEach((arg, index) => {
+            if (arg === '$args') {
+                parsedDef.argsPosition = index;
+            }
+            else if (arg === '$kwargs') {
+                parsedDef.kwargsPosition = index;
+            }
+            else {
+                const entry = {
+                    name: (arg['name'] !== undefined) ? arg['name'] : arg,
+                    default: arg['default'],
+                    index: index
+                };
+                parsedDef.lookup[entry.name] = entry;
+                parsedDef.lookup[entry.index] = entry;
+                if (arg['default'] !== undefined) {
+                    parsedDef.defaults[entry.name] = arg['default'];
+                }
+            }
+        });
+        return parsedDef;
     }
 }
 export { Query };
@@ -351,3 +268,348 @@ export class SpecialNotFoundError extends Error {
         super(`'${special}' is not a valid special. Valid options are ${Object.keys(SPECIALS)}`);
     }
 }
+export class UnepectedKeywordArgument extends Error {
+    constructor(name, special) {
+        super(`Unexpected keyword argument '${name}' in special $${special}`);
+    }
+}
+export class UnexpectedPositionalArgument extends Error {
+    constructor(position, special) {
+        super(`Unexpected positional argument at ${position + 1} in special $${special}`);
+    }
+}
+export function REGISTER_DEFAULTS() {
+    // general
+    Query.register_special('length', (value) => {
+        if (value.size !== undefined) {
+            return value.size;
+        }
+        else if (value.length !== undefined) {
+            return value.length;
+        }
+        else {
+            return Object.keys(value).length;
+        }
+    });
+    Query.register_special('lookup', (value, _, args) => {
+        return (args.mp[value] !== undefined) ? args.mp[value] : args.fallback;
+    }, ['mp', { name: 'fallback', default: null }]);
+    Query.register_special('inject', (_, context, args) => { return args.value; }, ['value']),
+        Query.register_special('print', (value) => { console.log(value); return value; }),
+        Query.register_special('store_as', (value, context, args) => {
+            context[args.name] = value;
+            return value;
+        }, ['name']);
+    Query.register_special('group_by', (value, _, args) => {
+        let getValue;
+        if (typeof (args.key) === 'number') {
+            getValue = (value) => value[args.key];
+        }
+        else {
+            let query;
+            if (QUERY_CACHE[args.key] !== undefined) {
+                query = QUERY_CACHE[args.key];
+            }
+            else {
+                query = new Query(args.key);
+                QUERY_CACHE[args.key] = query;
+            }
+            getValue = (value) => query.single(value);
+        }
+        const out = {};
+        value.map(v => {
+            const part = getValue(v);
+            if (out[part] !== undefined) {
+                if (args.count) {
+                    out[part] += 1;
+                }
+                else {
+                    out[part].push(v);
+                }
+            }
+            else {
+                if (args.count) {
+                    out[part] = 1;
+                }
+                else {
+                    out[part] = [v];
+                }
+            }
+        });
+        return out;
+    }, [{ name: 'key', default: '' }, { name: 'count', default: false }]);
+    Query.register_special('pipeline', 
+    /**
+     * @param args: {
+     *      pipeline: [
+     *          str - The name of the special
+     *          [str, *args] - The name of the special, followed by positional arguments
+     *          [str, dict] - The name of the special, followed by a dict of keyword arguments
+     *          [str, *args, dict] - The name of the special, followed by positional and then a dict of keyword arguments
+     *      ]
+     * }
+     */
+    (value, context, args) => {
+        let localValue = value;
+        args.pipeline.forEach(stage => {
+            if (typeof (stage) === 'string') {
+                localValue = SPECIALS[stage].function(localValue, context, { $args: [], $kwargs: {} });
+            }
+            else if (!((stage[stage.length - 1]) instanceof Set)
+                && typeof (stage[stage.length - 1]) === 'object'
+                && !Array.isArray(stage[stage.length - 1])) {
+                localValue = SPECIALS[stage[0]].function(localValue, context, Query.parseArgs(stage.slice(1, stage.length - 1), stage[stage.length - 1], stage[0]));
+            }
+            else {
+                localValue = SPECIALS[stage[0]].function(localValue, context, Query.parseArgs(stage.slice(1), {}, stage[0]));
+            }
+        });
+        return localValue;
+    }, ['pipeline']);
+    // maps/objects
+    Query.register_special('keys', (value) => { return Object.keys(value); });
+    Query.register_special('values', (value) => { return Object.keys(value).map(key => value[key]); });
+    Query.register_special('items', (value) => { return Object.keys(value).map(key => [key, value[key]]); });
+    Query.register_special('wildcard', (value, _, args) => {
+        let out = [];
+        Object.keys(value).forEach(key => {
+            try {
+                if (value[key][args.nxt] !== undefined) {
+                    out.push((args.just_field) ? value[key][args.nxt] : value[key]);
+                }
+            }
+            catch (TypeError) {
+            }
+        });
+        return out;
+    }, ['nxt', { name: 'just_field', default: true }]);
+    Query.register_special('value_map', (value, context, args) => {
+        let data = value;
+        if (args.duplicate) {
+            data = Object.assign({}, value);
+        }
+        Object.keys(data).forEach(key => {
+            data[key] = SPECIALS[args.special].function(data[key], context, Query.parseArgs(args.$args, args.$kwargs, args.special));
+        });
+        return data;
+    }, ['special', { name: 'duplicate', default: true }, '$args', '$kwargs']);
+    Query.register_special('key_of_min_value', (value, _, args) => {
+        let key = null;
+        Object.keys(value).forEach(k => {
+            if (key === null || value[k] < value[key]) {
+                key = k;
+            }
+        });
+        return (args.just_key) ? key : [key, value[key]];
+    }, [{ name: 'just_key', default: true }]);
+    Query.register_special('key_of_max_value', (value, _, args) => {
+        let key = null;
+        Object.keys(value).forEach(k => {
+            if (key === null || value[k] > value[key]) {
+                key = k;
+            }
+        });
+        return (args.just_key) ? key : [key, value[key]];
+    }, [{ name: 'just_key', default: true }]);
+    // type conversions
+    Query.register_special('set', (value) => { return new Set(value); });
+    Query.register_special('float', (value) => { return parseFloat(value); });
+    Query.register_special('string', (value) => { return value.toString(); });
+    Query.register_special('dict', (value) => {
+        const out = {};
+        value.forEach(v => {
+            out[v[0]] = v[1];
+        });
+        return out;
+    });
+    Query.register_special('int', (value) => { return parseInt(value); });
+    Query.register_special('not', (value) => { return !value; });
+    Query.register_special('fallback', (value, _, args) => { return value || args.fallback; }, ['fallback']);
+    Query.register_special('ternary', (value, _, args) => {
+        if ((value && args.strict === false) || (value === true && args.strict === true)) {
+            return args.if_true;
+        }
+        else {
+            return args.if_false;
+        }
+    }, ['if_true', 'if_false', { name: 'strict', default: false }]);
+    // datetime
+    Query.register_special('parse_timestamp', (value) => { return moment.unix(value).utc(); });
+    Query.register_special('strptime', (value, _, args) => { return (args.fmt === null) ? moment.parseZone(value) : moment.parseZone(value, args.fmt); }, [{ name: 'fmt', default: null }]);
+    Query.register_special('timestamp', (value) => { return value.utc().unix(); });
+    Query.register_special('strftime', (value, _, args) => {
+        return value.format(args.fmt);
+    }, [{ name: 'fmt', default: 'YYYY-MM-DD[T]HH:mm:ss[Z]' }]);
+    Query.register_special('time_part', (value, _, args) => {
+        switch (args.part) {
+            case 'millisecond':
+                return value.milliseconds();
+            case 'second':
+                return value.seconds();
+            case 'minute':
+                return value.minutes();
+            case 'hour':
+                return value.hours();
+            case 'day':
+                return value.date();
+            case 'month':
+                return value.month() + 1;
+            case 'year':
+                return value.year();
+            case 'dayOfWeek':
+                return (value.days() + 6) % 7;
+            case 'dayOfYear':
+                return value.dayOfYear();
+        }
+    }, ['part']);
+    // math / numeric
+    Query.register_special('add', (value, _, args) => { return value + args.num; }, ['num']);
+    Query.register_special('subtract', (value, _, args) => { return value - args.num; }, ['num']);
+    Query.register_special('multiply', (value, _, args) => { return value * args.num; }, ['num']);
+    Query.register_special('divide', (value, _, args) => { return value / args.num; }, ['num']);
+    Query.register_special('pow', (value, _, args) => { return Math.pow(value, args.num); }, ['num']);
+    Query.register_special('abs', (value) => { return Math.abs(value); });
+    Query.register_special('distance', (value, _, args) => {
+        let sum = 0;
+        for (let i = 0; i < value.length; i++) {
+            sum += Math.pow(args.other[i] - value[i], 2);
+        }
+        return Math.sqrt(sum);
+    }, ['other']);
+    Query.register_special('math', (value, _, args) => { return Math[args.attr](value, ...args.$args); }, ['attr', '$args']);
+    Query.register_special('round', (value, _, args) => { return value.toFixed(args.n); }, [{ name: 'n', default: 2 }]);
+    Query.register_special('arith', (value, _, args) => {
+        return MATH_OPERATIONS[args.op](value, args.arg_value);
+    }, ['op', 'arg_value']);
+    // string
+    Query.register_special('lowercase', (value) => value.toLowerCase());
+    Query.register_special('uppercase', (value) => value.toUpperCase());
+    Query.register_special('titlecase', (value) => {
+        return [...value].map((letter, index, array) => {
+            if (index === 0 || array[index - 1] === ' ') {
+                return letter.toUpperCase();
+            }
+            else {
+                return letter.toLowerCase();
+            }
+        }).join('');
+    });
+    Query.register_special('prefix', (value, _, args) => { return `${args.prefix}${value}`; }, ['prefix']);
+    Query.register_special('suffix', (value, _, args) => { return `${value}${args.suffix}`; }, ['suffix']);
+    Query.register_special('wrap', (value, _, args) => { return `${args.prefix}${value}${args.suffix}`; }, ['prefix', 'suffix']);
+    Query.register_special('strip', (value) => { return value.trim(); });
+    Query.register_special('replace', (value, _, args) => { return value.replace(args.old, args.new); }, ['old', 'new']);
+    Query.register_special('trim', (value, _, args) => {
+        let trimmed = value.substring(0, args.length - args.suffix.length);
+        if (value.length > args.length - args.suffix.length) {
+            trimmed += args.suffix;
+        }
+        return trimmed;
+    }, [{ name: 'length', default: 50 }, { name: 'suffix', default: '...' }]);
+    Query.register_special('split', (value, _, args) => { return value.split(args.on); }, [{ name: 'on', default: ' ' }]);
+    // list
+    Query.register_special('min', (value) => Math.min(...value));
+    Query.register_special('max', (value) => Math.max(...value));
+    Query.register_special('sum', (value) => {
+        let sum = 0;
+        value.forEach(item => { sum += item; });
+        return sum;
+    });
+    Query.register_special('join', (value, _, args) => { return value.join(args.sep); }, [{ name: 'sep', default: ', ' }]);
+    Query.register_special('join_arg', (value, _, args) => {
+        return args.arg.join(args.sep);
+    }, ['arg', { name: 'sep', default: ', ' }]);
+    Query.register_special('index', (value, context, args) => {
+        const multiple = Array.isArray(args.key);
+        if (args.extended === true) {
+            const queryKey = args.key.toString() + (args.fallback) ? args.fallback.toString() : "";
+            let query;
+            if (QUERY_CACHE[queryKey] !== undefined) {
+                query = QUERY_CACHE[queryKey];
+            }
+            else {
+                query = new Query((multiple) ? args.key.map(k => k.toString()) : args.key.toString(), args.fallback);
+                QUERY_CACHE[queryKey] = query;
+            }
+            return query.single(value, context);
+        }
+        else {
+            const out = [];
+            ((multiple) ? args.key : [args.key]).forEach(k => {
+                try {
+                    if (value[k] === undefined) {
+                        if (context[k] === undefined) {
+                            out.push(args.fallback);
+                        }
+                        else {
+                            out.push(context[k]);
+                        }
+                    }
+                    else {
+                        out.push(value[k]);
+                    }
+                }
+                catch (TypeError) {
+                    out.push(args.fallback);
+                }
+            });
+            return (multiple) ? out : out[0];
+        }
+    }, ['key', { name: 'fallback', default: null }, { name: 'extended', default: false }]);
+    Query.register_special('range', (value, _, args) => {
+        if (args.end !== null) {
+            if (args.end < 0) { // support negative indices
+                return value.slice(args.start, value.length - args.end);
+            }
+            else {
+                return value.slice(args.start, args.end);
+            }
+        }
+        else {
+            return value.slice(args.start);
+        }
+    }, ['start', { name: 'end', default: null }]);
+    Query.register_special('remove_nulls', (value) => {
+        let out = [];
+        value.forEach(value => {
+            if (value !== null && value !== undefined) {
+                out.push(value);
+            }
+        });
+        return out;
+    });
+    Query.register_special('sort', (value, _, args) => {
+        const multi = (args.reverse) ? -1 : 1;
+        if (typeof (args.key) === 'number') {
+            return value.map(v => v).sort((a, b) => {
+                return (a[args.key] < b[args.key]) ? -1 * multi : multi;
+            });
+        }
+        else {
+            let query;
+            if (QUERY_CACHE[args.key] !== undefined) {
+                query = QUERY_CACHE[args.key];
+            }
+            else {
+                query = new Query(args.key);
+                QUERY_CACHE[args.key] = query;
+            }
+            return value.map(v => v).sort((a, b) => {
+                return (query.single(a) < query.single(b)) ? -1 * multi : multi;
+            });
+        }
+    }, [{ name: 'key', default: '' }, { name: 'reverse', default: false }]);
+    Query.register_special('map', (value, context, args) => {
+        return value.map(item => {
+            return SPECIALS[args.special].function(item, context, Query.parseArgs(args.$args, args.$kwargs, args.special));
+        });
+    }, ['special', '$args', '$kwargs']);
+    // attribute accessing
+    Query.register_special('call', (value, _, args) => {
+        return value[args.func](...args.$args);
+    }, ['func', '$args']);
+    Query.register_special('attr', (value, _, args) => {
+        return value[args.attr];
+    }, ['attr']);
+}
+REGISTER_DEFAULTS();

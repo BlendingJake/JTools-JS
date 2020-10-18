@@ -39,17 +39,31 @@ declaration files.
      `$special([1, 1+1, 1+2])`. The order of operations follows typical precedence, and arithmetic 
      can be nested in `()`.
      * Support for keyword arguments:`$index("value", fallback=12)`
-     * Whitespace is allowed in a lot more places in a query now, which is very helpful in a language
-     like Python which has multi-line strings.
+     * Whitespace is allowed in a lot more places in a query now, which is very helpful since both
+      JavaScript and Python support multi-line strings.
+   * Performance increase for cases were a `Query` field doesn't have any specials. A faster parsing
+   method can be used for about a 40x performance increase in creating the `Query` object. Note, this
+   just speeds up `Query` creation and not the speed of `.single()`, `.many()`, etc.
    * Added functionality so that `Filter` values can be queries.
      * Using JSON: `{ field: <field>, operator: <op>, value: { query: <value query> } }`
      * Using `Key`: `Key(<field>).<op>(Key(<value_query>))`
      * For example: `Key("tag.tag1").gt(Key("tag.tag2"))`
+   * Four new filters: `subset`, `!subset`, `superset`, `!superset`. These should be read 
+   `field value <op> filter value`, so `subset` means all of the values returned from the field query
+   are in the filter value, which allows better filtering when both the field query and value are iterable.
    * Many new specials
      * `$key_of_min_value` - Gets the key of the min value in an dict/map/object
      * `$key_of_max_value` - Gets the key of the max value in an dict/map/object
-     * `$time_part(part) -> int` - Get a specific part of a datetime/moment object. Valid values for `part` are
-     `'millisecond', 'second', 'minute', 'hour', 'day', 'month', 'year', 'dayOfWeek', 'dayOfYear'`
+     * `$time_part(part) -> int` - Get a specific part of a datetime/moment object. Valid values for `part` are as follows:
+       * 'millisecond'
+       * 'second'
+       * 'minute' - Starting from 0
+       * 'hour' - Starting from 0
+       * 'day' - Day of month, starting from 1
+       * 'month' - Month of year, starting from 1
+       * 'year'
+       * 'dayOfWeek' - Value in 0-6, corresponding to Monday-Sunday
+       * 'dayOfYear' - Day of year, starting from 1
      * `$min` and `$max`
      * `$arith(op, arg_value)` - Perform an arithmetic operation on the current value. `op` can be
      any of the support [math operators](#math-operators). 
@@ -259,16 +273,49 @@ Math expressions can be nested in other values, for example:
 
 ### Notes
  * More specials can be added by using the class method `.register_special()` 
- like so: `Query.register_special(<name>, <func>)`. The function should be formatted as such: 
+ like so: `Query.register_special(<name>, <func>, <argDef> [if JavaScript])`. The function should be formatted as such: 
   ```python
  # Python
 lambda value, *args, context: ...
  ```
  ```javascript
 // JavaScript
-(value, context, ...args) => { ... }
+(value, context, args) => { ... }
  ```
- Where `value` is the current query value, and `context` is the current context.
+Where `value` is the current query value, and `context` is the current context.
+
+#### Registering a special in JavaScript
+Registering a special works differently in JavaScript because the language does not support keyword arguments. To get
+around this, an argument definition should be provided whenever the special is registered. The argument definition
+should be formatted:
+```javascript
+[
+    '<argument name>' | { 'name': '<argument name>', [ 'default': <default value> ] }
+]
+```
+The argument definition allows you to state what the name of each parameter is, and allows a default value to be provided. 
+Additionally, '$args' and '$kwargs' can be placed in the argument definition to capture a variable number of positional 
+arguments or keyword arguments, respectively. 
+
+Each registered special function is then passed an object, `args`, which is `{ <argument name>: <argument value>, ... }`.
+The keys '$args' and '$kwargs' capture the variable number of positional and keyword arguments, respectively. 
+
+Some example argument definitions and usages:
+```javascript
+Query.register_special('index', (value, context, args) => {
+    // use args.key, args.fallback, and args.extended to access arguments
+}, [ 'key', { name: 'fallback', default: null }, { name: 'extended', default: false } ])
+
+Query.register_special('filter', (value, context, args) => {
+    // args.$args is an array of any positional arguments
+    // args.single must be specified as a keyword argument (as it's after $args)
+}, [ '$args', { name: 'single', default: false } ])
+
+Query.register_special('update', (value, context, args) => {
+    // args.$kwargs is an object of any captured key->value pairs
+    return { ...value, ...args.$kwargs };
+}, [ '$kwargs' ])
+```
 
 #### Context
 >Context is a way of putting temporary variables into the query search space.
@@ -328,6 +375,10 @@ Query("""
 """)
 ```
   * `$print -> any`: Print the current query value before continuing to pass that value along
+  * `$filter(field, op, value, single=true)` OR `$filter({<filter>}, single=true)` OR 
+     `$filter([<filters>], single=true)`: Allow a single value or list of values to be filtered.
+     The filters should be formatted that same way they are for `Filter`. `single` can only be supplied
+     as a keyword argument.
   
 Dict/Maps/Objects
   * `$items -> List[[any, any]]`
@@ -538,6 +589,10 @@ Operators:
  * `!in`
  * `contains`: `<value> in <field>`
  * `!contains`
+ * `subset`: `x in <value> for x in <field>`
+ * `!subset`: `exists x in <field> such that x not in <value>`
+ * `superset`: `x in <field> for x in <value>`
+ * `!superser`: `exists x in <value> such that x not in <field>`
  * `interval`: `<field> in interval [value[0], value[1]]` (closed/inclusive interval)
  * `!interval`: `<field> not in interval [value[0], value[1]]` 
  * `startswith`
@@ -582,6 +637,10 @@ Operators:
 | `!in` | `nin` | N/A | 
 | `contains` | `contains` | N/A | 
 | `!contains` | `not_contains` | N/A | 
+| `subset` | `subset` | N/A | 
+| `!subset` | `not_subset` | N/A | 
+| `superset` | `superset` | N/A | 
+| `!superset` | `not_superset` | N/A | 
 | `interval` | `interval` | N/A |
 | `!interval` | `not_interval` | N/A |
 | `startswith` | `startswith` | N/A | 

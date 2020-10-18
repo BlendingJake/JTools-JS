@@ -118,66 +118,99 @@ export class ValueLessCondition {
         this.op = op;
     }
     value(value) {
-        return new Condition(this.field, this.op, value);
+        return new Condition(this.field, this.op, (value instanceof _Key) ? { query: value.field } : value);
     }
 }
 class _Key {
     constructor(field) {
         this.field = field;
     }
+    build(op, other) {
+        if (other instanceof _Key) {
+            return new Condition(this.field, op, { query: other.field });
+        }
+        else {
+            return new Condition(this.field, op, other);
+        }
+    }
     gt(other) {
-        return new Condition(this.field, ">", other);
+        return this.build('>', other);
     }
     lt(other) {
-        return new Condition(this.field, "<", other);
+        return this.build('<', other);
     }
     gte(other) {
-        return new Condition(this.field, ">=", other);
+        return this.build('>=', other);
     }
     lte(other) {
-        return new Condition(this.field, "<=", other);
+        return this.build('<=', other);
     }
     eq(other) {
-        return new Condition(this.field, "==", other);
+        return this.build('==', other);
     }
     ne(other) {
-        return new Condition(this.field, "!=", other);
+        return this.build('!=', other);
     }
     seq(other) {
-        return new Condition(this.field, "===", other);
+        return this.build('===', other);
     }
     sne(other) {
-        return new Condition(this.field, "!==", other);
+        return this.build('!==', other);
+    }
+    is_true() {
+        return this.build('===', true);
+    }
+    is_false() {
+        return this.build('===', false);
+    }
+    is_null() {
+        return this.build('===', null);
     }
     in_(other) {
-        return new Condition(this.field, "in", other);
+        return this.build('in', other);
     }
     nin(other) {
-        return new Condition(this.field, "!in", other);
+        return this.build('!in', other);
     }
     contains(other) {
-        return new Condition(this.field, "contains", other);
+        return this.build('contains', other);
     }
     not_contains(other) {
-        return new Condition(this.field, "!contains", other);
+        return this.build('!contains', other);
     }
-    interval(valuesOrMin, max = null) {
-        return new Condition(this.field, "interval", (Array.isArray(valuesOrMin)) ? valuesOrMin : [valuesOrMin, max]);
+    subset(other) {
+        return this.build('subset', other);
     }
-    not_interval(valuesOrMin, max = null) {
-        return new Condition(this.field, "!interval", (Array.isArray(valuesOrMin)) ? valuesOrMin : [valuesOrMin, max]);
+    not_subset(other) {
+        return this.build('!subset', other);
+    }
+    superset(other) {
+        return this.build('superset', other);
+    }
+    not_superset(other) {
+        return this.build('!superset', other);
+    }
+    interval(valuesOrMinOrKey, max = null) {
+        return this.build('interval', (Array.isArray(valuesOrMinOrKey) || valuesOrMinOrKey instanceof _Key)
+            ? valuesOrMinOrKey
+            : [valuesOrMinOrKey, max]);
+    }
+    not_interval(valuesOrMinOrKey, max = null) {
+        return this.build('!interval', (Array.isArray(valuesOrMinOrKey) || valuesOrMinOrKey instanceof _Key)
+            ? valuesOrMinOrKey
+            : [valuesOrMinOrKey, max]);
     }
     startswith(prefix) {
-        return new Condition(this.field, "startswith", prefix);
+        return this.build('startswith', prefix);
     }
     endswith(suffix) {
-        return new Condition(this.field, "endswith", suffix);
+        return this.build('endswith', suffix);
     }
     present() {
-        return new Condition(this.field, "present", null);
+        return this.build('present', null);
     }
     not_present() {
-        return new Condition(this.field, "!present", null);
+        return this.build('!present', null);
     }
     operator(op) {
         return new ValueLessCondition(this.field, op);
@@ -239,6 +272,30 @@ export const FILTER_OPERATIONS = {
             return field_value[value] === undefined;
         }
     },
+    'subset': (fieldValue, value) => {
+        const checker = (value instanceof Set)
+            ? (v) => value.has(v)
+            : (Array.isArray(value))
+                ? (v) => value.includes(v)
+                : (v) => value[v] !== undefined;
+        let isSubset = true;
+        ((Array.isArray(fieldValue) || fieldValue instanceof Set) ? [...fieldValue] : Object.keys(fieldValue))
+            .forEach(v => {
+            if (!checker(v)) {
+                isSubset = false;
+            }
+        });
+        return isSubset;
+    },
+    '!subset': (fieldValue, value) => {
+        return !FILTER_OPERATIONS.subset(fieldValue, value);
+    },
+    'superset': (fieldValue, value) => {
+        return FILTER_OPERATIONS.subset(value, fieldValue);
+    },
+    '!superset': (fieldValue, value) => {
+        return !FILTER_OPERATIONS.superset(fieldValue, value);
+    },
     "interval": (field_value, value) => { return value[0] <= field_value && field_value <= value[1]; },
     "!interval": (field_value, value) => { return field_value < value[0] || value[1] < field_value; },
     "startswith": (field_value, value) => { return field_value.startsWith(value); },
@@ -269,7 +326,12 @@ export default class Filter {
     _preprocess(filters) {
         const out = {};
         Condition.fromArray(filters).traverse((filter) => {
-            out[filter.field] = new Query(filter.field, MISSING);
+            if (out[filter.field] === undefined) {
+                out[filter.field] = new Query(filter.field, MISSING);
+            }
+            if (filter.value && filter.value['query'] !== undefined && out[filter.value.query] === undefined) {
+                out[filter.value.query] = new Query(filter.value.query, MISSING);
+            }
         });
         return out;
     }
@@ -279,30 +341,37 @@ export default class Filter {
         }
         let overall = null;
         let c;
-        let query_result;
+        let queryResult;
         for (let f of filters) {
             if (Array.isArray(f)) {
-                c = this._filter(item, f, oring, context);
+                c = this._filter(item, f, false, context);
             }
             else if (f.or !== undefined) {
                 c = this._filter(item, f.or, true, context);
             }
             else if (f.not !== undefined) {
-                c = !this._filter(item, f.not, oring, context);
+                c = !this._filter(item, f.not, false, context);
             }
             else {
-                query_result = this.queries[f.field].single(item, context);
-                if (query_result === MISSING && f.operator !== 'present' && f.operator !== '!present') {
+                queryResult = this.queries[f.field].single(item, context);
+                let value;
+                if (f.value && f.value['query'] !== undefined) {
+                    value = this.queries[f.value.query].single(item, context);
+                }
+                else {
+                    value = f.value;
+                }
+                if (queryResult === MISSING && f.operator !== 'present' && f.operator !== '!present') {
                     c = this.missing_field_response;
                 }
                 else {
-                    c = FILTER_OPERATIONS[f.operator](query_result, f.value);
+                    c = FILTER_OPERATIONS[f.operator](queryResult, value);
                 }
             }
             if (overall === null) {
                 overall = c;
             }
-            else if (f.or !== undefined || oring === true) {
+            else if (oring === true) {
                 overall = c || overall;
                 if (overall === true) { // shortcut or
                     return true;
@@ -341,5 +410,54 @@ export default class Filter {
         });
         return out;
     }
+    first(items, context = {}) {
+        for (let i = 0; i < items.length; i++) {
+            if (this._filter(items[i], null, false, Object.assign({ INDEX: i }, context))) {
+                return items[i];
+            }
+        }
+        return null;
+    }
+    last(items, context = {}) {
+        for (let i = items.length - 1; i >= 0; i--) {
+            if (this._filter(items[i], null, false, Object.assign({ INDEX: i }, context))) {
+                return items[i];
+            }
+        }
+        return null;
+    }
+    static register_filter(op, func) {
+        if (FILTER_OPERATIONS[op] === undefined) {
+            FILTER_OPERATIONS[op] = func;
+            return true;
+        }
+        else {
+            console.warn(`${op} is already registered as a filter`);
+            return false;
+        }
+    }
 }
+export const FILTER_CACHE = {};
+Query.register_special('filter', (value, context, args) => {
+    let f;
+    if (args.$args.length === 3) {
+        f = [{ field: args.$args[0], operator: args.$args[1], value: args.$args[2] }];
+    }
+    else if (!Array.isArray(args.$args[0])) {
+        f = [args.$args[0]];
+    }
+    else {
+        f = args.$args[0];
+    }
+    const key = JSON.stringify(f);
+    if (FILTER_CACHE[key] === undefined) {
+        FILTER_CACHE[key] = new Filter(f);
+    }
+    if (args.single) {
+        return FILTER_CACHE[key].single(value, context);
+    }
+    else {
+        return FILTER_CACHE[key].many(value, context);
+    }
+}, ['$args', { name: 'single', default: true }]);
 export { Filter };

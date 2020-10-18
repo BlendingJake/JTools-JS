@@ -1,5 +1,5 @@
 import { Query } from "./query";
-export declare type Operator = '>' | '<' | '>=' | '<=' | '==' | '!=' | '===' | '!==' | 'in' | '!in' | 'contains' | '!contains' | 'interval' | '!interval' | 'startswith' | 'endswith' | 'present' | '!present';
+export declare type Operator = '>' | '<' | '>=' | '<=' | '==' | '!=' | '===' | '!==' | 'in' | '!in' | 'contains' | '!contains' | 'interval' | '!interval' | 'startswith' | 'endswith' | 'present' | '!present' | 'subset' | '!subset' | 'superset' | '!superset';
 export interface SingleFilter {
     field: string;
     operator: Operator;
@@ -37,27 +37,35 @@ export declare class ValueLessCondition {
     private field;
     private op;
     constructor(field: string, op: Operator);
-    value(value: any): Condition;
+    value(value: any | _Key): Condition;
 }
 declare class _Key {
-    private readonly field;
+    readonly field: string;
     constructor(field: string);
-    gt(other: number): Condition;
-    lt(other: number): Condition;
-    gte(other: number): Condition;
-    lte(other: number): Condition;
-    eq(other: any): Condition;
-    ne(other: any): Condition;
-    seq(other: any): Condition;
-    sne(other: any): Condition;
-    in_(other: any): Condition;
-    nin(other: any): Condition;
-    contains(other: any): Condition;
-    not_contains(other: any): Condition;
-    interval(valuesOrMin: [number, number] | number, max?: number): Condition;
-    not_interval(valuesOrMin: [number, number] | number, max?: number): Condition;
-    startswith(prefix: string): Condition;
-    endswith(suffix: string): Condition;
+    protected build(op: Operator, other: any | _Key): Condition;
+    gt(other: number | _Key): Condition;
+    lt(other: number | _Key): Condition;
+    gte(other: number | _Key): Condition;
+    lte(other: number | _Key): Condition;
+    eq(other: any | _Key): Condition;
+    ne(other: any | _Key): Condition;
+    seq(other: any | _Key): Condition;
+    sne(other: any | _Key): Condition;
+    is_true(): Condition;
+    is_false(): Condition;
+    is_null(): Condition;
+    in_(other: any | _Key): Condition;
+    nin(other: any | _Key): Condition;
+    contains(other: any | _Key): Condition;
+    not_contains(other: any | _Key): Condition;
+    subset(other: any | _Key): Condition;
+    not_subset(other: any | _Key): Condition;
+    superset(other: any | _Key): Condition;
+    not_superset(other: any | _Key): Condition;
+    interval(valuesOrMinOrKey: [number, number] | number | _Key, max?: number): Condition;
+    not_interval(valuesOrMinOrKey: [number, number] | number | _Key, max?: number): Condition;
+    startswith(prefix: string | _Key): Condition;
+    endswith(suffix: string | _Key): Condition;
     present(): Condition;
     not_present(): Condition;
     operator(op: Operator): ValueLessCondition;
@@ -104,5 +112,15 @@ export default class Filter {
     many(items: any[], context?: {
         [key in string | number]: any;
     }): any[];
+    first(items: any[], context?: {
+        [key in string | number]: any;
+    }): any | null;
+    last(items: any[], context?: {
+        [key in string | number]: any;
+    }): any | null;
+    static register_filter(op: string, func: (fieldValue: any, value: any) => boolean): boolean;
 }
+export declare const FILTER_CACHE: {
+    [key: string]: Filter;
+};
 export { Filter };
