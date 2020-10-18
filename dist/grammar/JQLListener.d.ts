@@ -8,7 +8,17 @@ import { Query_fieldContext } from "./JQLParser";
 import { SpecialContext } from "./JQLParser";
 import { Special_nameContext } from "./JQLParser";
 import { ArgumentsContext } from "./JQLParser";
+import { Keyword_argumentContext } from "./JQLParser";
+import { ArgumentContext } from "./JQLParser";
+import { Arith_exprContext } from "./JQLParser";
+import { Arith_operatorContext } from "./JQLParser";
+import { Factor_exprContext } from "./JQLParser";
+import { Factor_operatorContext } from "./JQLParser";
+import { Power_exprContext } from "./JQLParser";
+import { Power_operatorContext } from "./JQLParser";
+import { Math_valueContext } from "./JQLParser";
 import { ValueContext } from "./JQLParser";
+import { Primitive_valueContext } from "./JQLParser";
 import { List_valueContext } from "./JQLParser";
 import { Set_valueContext } from "./JQLParser";
 import { Object_valueContext } from "./JQLParser";
@@ -112,6 +122,96 @@ export interface JQLListener extends ParseTreeListener {
      */
     exitArguments?: (ctx: ArgumentsContext) => void;
     /**
+     * Enter a parse tree produced by `JQLParser.keyword_argument`.
+     * @param ctx the parse tree
+     */
+    enterKeyword_argument?: (ctx: Keyword_argumentContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.keyword_argument`.
+     * @param ctx the parse tree
+     */
+    exitKeyword_argument?: (ctx: Keyword_argumentContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.argument`.
+     * @param ctx the parse tree
+     */
+    enterArgument?: (ctx: ArgumentContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.argument`.
+     * @param ctx the parse tree
+     */
+    exitArgument?: (ctx: ArgumentContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.arith_expr`.
+     * @param ctx the parse tree
+     */
+    enterArith_expr?: (ctx: Arith_exprContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.arith_expr`.
+     * @param ctx the parse tree
+     */
+    exitArith_expr?: (ctx: Arith_exprContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.arith_operator`.
+     * @param ctx the parse tree
+     */
+    enterArith_operator?: (ctx: Arith_operatorContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.arith_operator`.
+     * @param ctx the parse tree
+     */
+    exitArith_operator?: (ctx: Arith_operatorContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.factor_expr`.
+     * @param ctx the parse tree
+     */
+    enterFactor_expr?: (ctx: Factor_exprContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.factor_expr`.
+     * @param ctx the parse tree
+     */
+    exitFactor_expr?: (ctx: Factor_exprContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.factor_operator`.
+     * @param ctx the parse tree
+     */
+    enterFactor_operator?: (ctx: Factor_operatorContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.factor_operator`.
+     * @param ctx the parse tree
+     */
+    exitFactor_operator?: (ctx: Factor_operatorContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.power_expr`.
+     * @param ctx the parse tree
+     */
+    enterPower_expr?: (ctx: Power_exprContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.power_expr`.
+     * @param ctx the parse tree
+     */
+    exitPower_expr?: (ctx: Power_exprContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.power_operator`.
+     * @param ctx the parse tree
+     */
+    enterPower_operator?: (ctx: Power_operatorContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.power_operator`.
+     * @param ctx the parse tree
+     */
+    exitPower_operator?: (ctx: Power_operatorContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.math_value`.
+     * @param ctx the parse tree
+     */
+    enterMath_value?: (ctx: Math_valueContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.math_value`.
+     * @param ctx the parse tree
+     */
+    exitMath_value?: (ctx: Math_valueContext) => void;
+    /**
      * Enter a parse tree produced by `JQLParser.value`.
      * @param ctx the parse tree
      */
@@ -121,6 +221,16 @@ export interface JQLListener extends ParseTreeListener {
      * @param ctx the parse tree
      */
     exitValue?: (ctx: ValueContext) => void;
+    /**
+     * Enter a parse tree produced by `JQLParser.primitive_value`.
+     * @param ctx the parse tree
+     */
+    enterPrimitive_value?: (ctx: Primitive_valueContext) => void;
+    /**
+     * Exit a parse tree produced by `JQLParser.primitive_value`.
+     * @param ctx the parse tree
+     */
+    exitPrimitive_value?: (ctx: Primitive_valueContext) => void;
     /**
      * Enter a parse tree produced by `JQLParser.list_value`.
      * @param ctx the parse tree

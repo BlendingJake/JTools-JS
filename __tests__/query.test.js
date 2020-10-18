@@ -1,4 +1,4 @@
-import { Query, SpecialNotFoundError } from "../dist";
+import { Filter, Key, Query, SpecialNotFoundError } from "../dist";
 let small_data = require("./data/20.json");
 
 test(".single() for single field", () => {
@@ -62,6 +62,12 @@ test(".many() for missing nested field", () => {
     ).toStrictEqual(["MISSING", "MISSING", "MISSING"]);
 });
 
+test('.single() second level missing', () => {
+    expect(
+        new Query('null.3', 'MISSING').single({ 'null': [0, 1] })
+    ).toStrictEqual('MISSING');
+});
+
 test(".many() for single field", () => {
     expect(
         new Query("age", "MISSING").many(small_data.slice(0, 3))
@@ -110,6 +116,19 @@ test("test getting substring dollar amount, replacing commas, and converting to 
     ).toStrictEqual(parseFloat(small_data[0].balance.substring(1).replace(",", "")));
 });
 
+test('test arithmatic in args', () => {
+    const data = { a: 4, b: -4, c: 2.5, d: [3, 4], e: 0, pi: 3.1415926 };
+    expect(
+        new Query('$inject(@a / (@b + @c) - @pi)').single(data)
+    ).toStrictEqual(data.a / (data.b + data.c) - data.pi);
+    expect(
+        new Query('$inject(@a + @b * @c ** @e)').single(data)
+    ).toStrictEqual(data.a + data.b * Math.pow(data.c, data.e));
+    expect(
+        new Query('$inject((@a + @b) * @c ** @e)').single(data)
+    ).toStrictEqual((data.a + data.b) * Math.pow(data.c, data.e));
+});
+
 test("$length of string", () => {
     expect(
         new Query('_id.$length').single(small_data[0])
@@ -139,6 +158,44 @@ test("$length of set", () => {
     ).toStrictEqual(set.size);
 });
 
+test('$lookup', () => {
+    const data = { a: 'query', b: 'filter' };
+    expect(
+        new Query(`field.$lookup(${JSON.stringify(data)})`).single({ field: 'a' })
+    ).toStrictEqual(data.a);
+    expect(
+        new Query(`field.$lookup(${JSON.stringify(data)}, 'missing')`).single({ field: 'c' })
+    ).toStrictEqual('missing');
+});
+
+test('$print', () => {
+    const consoleSpy = jest.spyOn(console, 'log');
+    new Query('$inject("message").$print').single({});
+    expect(consoleSpy).toHaveBeenCalledWith('message');
+});
+
+test('keyword arguments', () => {
+    const data = small_data[0];
+    expect(
+        new Query('$index("balance")').single(data)
+    ).toStrictEqual(data.balance);
+    expect(
+        new Query('$index("nope")').single(data)
+    ).toStrictEqual(null);
+    expect(
+        new Query('$index("nope", "nope")').single(data)
+    ).toStrictEqual("nope");
+    expect(
+        new Query('$index("nope", fallback="nope")').single(data)
+    ).toStrictEqual("nope");
+    expect(
+        new Query('$index("tags.0", extended=true, fallback="nope")').single(data)
+    ).toStrictEqual(data.tags[0]);
+    expect(
+        new Query('$index("tags.0", extended=true, fallback="nope")').single(data)
+    ).toStrictEqual(data.tags[0]);
+})
+
 test("$keys", () => {
     expect(
         new Query('favoriteFruit.$keys').single(small_data[0])
@@ -156,6 +213,44 @@ test("$items", () => {
         new Query('favoriteFruit.$items').single(small_data[2])
     ).toStrictEqual(Object.keys(small_data[2].favoriteFruit).map(key => [key, small_data[2].favoriteFruit[key]]));
 });
+
+test("$wildcard", () => {
+    let data = {
+        "a": {"key": 8, "other": 8},
+        "b": {"key": 4},
+        "c": {"value": 5},
+        "d": 0,
+        "e": "daf",
+        "f": null,
+        "g": ["john", "susan", "carl"],
+        "h": true
+    };
+    let Q = (q) => { return new Query(q).single(data); };
+
+    expect(Q("$wildcard('key')")).toStrictEqual([data.a.key, data.b.key]);
+    expect(Q("$wildcard('key', false)")).toStrictEqual([data.a, data.b]);
+    expect(Q("$wildcard(0)")).toStrictEqual([data.e[0], data.g[0]]);
+    expect(Q("$wildcard(0, false)")).toStrictEqual([data.e, data.g]);
+});
+
+test('key_of variants', () => {
+    const data = {};
+    for (let i=0; i<=10; i++) { data[Math.floor(Math.random() * 100)] = i; }
+
+    let min = null;
+    let max = null;
+    Object.keys(data).forEach(key => {
+        if (min === null || data[key] < data[min]) { min = key; }
+        if (max === null || data[key] > data[max]) { max = key; }
+    });
+
+    const Q = (q) => { return new Query(q).single(data); };
+    expect(Q('$key_of_max_value')).toStrictEqual(max);
+    expect(Q('$key_of_max_value(just_key=false)')).toStrictEqual([max, data[max]]);
+    expect(Q('$key_of_min_value')).toStrictEqual(min);
+    expect(Q('$key_of_min_value(just_key=false)')).toStrictEqual([min, data[min]]);
+})
+
 
 test("$set", () => {
     expect(
@@ -226,7 +321,7 @@ test("$parse_timestamp then $strftime", () => {
 test("$strptime", () => {
     expect(
         new Query('t.$strptime("MM/DD/YYYY").$timestamp').single({t: "01/25/2020"})
-    ).toStrictEqual(1579928400);
+    ).toStrictEqual(1579910400);
     expect(
         new Query('t.$strptime.$call("date")').single({t: "1995-12-25"})
     ).toStrictEqual(25);
@@ -237,6 +332,20 @@ test("$call('date')", () => {
     expect(
         new Query('t.$strptime("MM/DD/YYYY").$call("date")').single({t: "01/25/2020"})
     ).toStrictEqual(25);
+});
+
+
+test('$time_part', () => {
+    const dt = "2020-05-23T10:11:12.123+00:00";
+    expect(new Query('$strptime.$time_part("year")').single(dt)).toStrictEqual(2020);
+    expect(new Query('$strptime.$time_part("month")').single(dt)).toStrictEqual(5);
+    expect(new Query('$strptime.$time_part("day")').single(dt)).toStrictEqual(23);
+    expect(new Query('$strptime.$time_part("hour")').single(dt)).toStrictEqual(10);
+    expect(new Query('$strptime.$time_part("minute")').single(dt)).toStrictEqual(11);
+    expect(new Query('$strptime.$time_part("second")').single(dt)).toStrictEqual(12);
+    expect(new Query('$strptime.$time_part("millisecond")').single(dt)).toStrictEqual(123);
+    expect(new Query('$strptime.$time_part("dayOfWeek")').single(dt)).toStrictEqual(5);
+    expect(new Query('$strptime.$time_part("dayOfYear")').single(dt)).toStrictEqual(144);
 });
 
 test("arithmetic", () => {
@@ -255,6 +364,24 @@ test("arithmetic", () => {
     expect(new Query("a.$math('min', @b, @e)").single(data)).toStrictEqual(data.b);
     expect(new Query('pi.$round').single(data)).toStrictEqual("3.14");
     expect(new Query('pi.$round(4)').single(data)).toStrictEqual("3.1416");
+});
+
+test('$arith', () => {
+    const data = {"a": 4, "b": -4, "c": 2.5, "d": [3, 4], "e": 0, "pi": 3.1415926};
+    expect(new Query('a.$arith("+", @b + @c)').single(data)).toStrictEqual(data.a + data.b + data.c);
+    expect(new Query('a.$arith("+", @b - @c)').single(data)).toStrictEqual(data.a + data.b - data.c);
+    expect(new Query('a.$arith("+", @b * @c)').single(data)).toStrictEqual(data.a + data.b * data.c);
+    expect(new Query('a.$arith("+", @b / @c)').single(data)).toStrictEqual(data.a + data.b / data.c);
+    expect(new Query('a.$arith("+", @b ** @c)').single(data)).toStrictEqual(data.a + Math.pow(data.b ,data.c));
+    expect(new Query('a.$arith("+", @b // @c)').single(data)).toStrictEqual(data.a + Math.floor(data.b / data.c));
+    expect(new Query('a.$arith("+", @b % @c)').single(data)).toStrictEqual(data.a + data.b % data.c);
+});
+
+test('min & max', () => {
+    const data = [];
+    for (let i=0; i<100; i++) { data.push(Math.floor(Math.random() * 100)); }
+    expect(new Query('$min').single(data)).toStrictEqual(Math.min(...data));
+    expect(new Query('$max').single(data)).toStrictEqual(Math.max(...data));
 });
 
 test("strings", () => {
@@ -294,6 +421,13 @@ test("strings", () => {
     expect(
         new Query('guid.$split("-")').single(small_data[0])
     ).toStrictEqual(small_data[0]["guid"].split("-"));
+});
+
+test('string cases', () => {
+    const item = "here IS sOmEtHiNg";
+    expect(new Query('$uppercase').single(item)).toStrictEqual('HERE IS SOMETHING');
+    expect(new Query('$lowercase').single(item)).toStrictEqual('here is something');
+    expect(new Query('$titlecase').single(item)).toStrictEqual('Here Is Something');
 });
 
 test("list", () => {
@@ -455,25 +589,6 @@ test("inject", () => {
     expect(Q('$inject([{"bob": "rick"}, false])')).toStrictEqual([{bob: "rick"}, false]);
 });
 
-test("wildcard", () => {
-    let data = {
-        "a": {"key": 8, "other": 8},
-        "b": {"key": 4},
-        "c": {"value": 5},
-        "d": 0,
-        "e": "daf",
-        "f": null,
-        "g": ["john", "susan", "carl"],
-        "h": true
-    };
-    let Q = (q) => { return new Query(q).single(data); };
-
-    expect(Q("$wildcard('key')")).toStrictEqual([data.a.key, data.b.key]);
-    expect(Q("$wildcard('key', false)")).toStrictEqual([data.a, data.b]);
-    expect(Q("$wildcard(0)")).toStrictEqual([data.e[0], data.g[0]]);
-    expect(Q("$wildcard(0, false)")).toStrictEqual([data.e, data.g]);
-});
-
 test("remove_nulls", () => {
     expect(
         new Query("$remove_nulls").single([1, null, "true", undefined])
@@ -577,6 +692,14 @@ test('group by flat', () => {
     ).toStrictEqual(val);
 });
 
+test('group by number', () => {
+    const data = Array(10).fill(0).map((_, index) => [index, index]);
+    const val = {};
+    data.forEach(pair => val[pair[0]] = [pair]);
+
+    expect(new Query('$group_by(0)').single(data)).toStrictEqual(val);
+});
+
 test('group by nested', () => {
     const val = {};
     small_data.forEach(item => {
@@ -623,6 +746,18 @@ test('sort flat', () => {
         result
     ).toStrictEqual(items);
 });
+
+test('sort number', () => {
+    const items = [];
+    for (let i = 0; i < 10; i++) {
+        items.push([Math.floor(Math.random() * 100), i]);
+    }
+
+    const copy = [...items];
+    expect(new Query('$sort(0)').single(items)).toStrictEqual(
+        copy.sort((a, b) => a[0] - b[0])
+    );
+}); 
 
 test('sort age', () => {    
     expect(
@@ -674,3 +809,65 @@ test('context', () => {
     ).toStrictEqual(5);
 });
 
+test('$pipeline', () => {
+    const min = Math.min(...small_data.map(item => {
+        return parseFloat(item['balance'].slice(1).replace(',', ''))
+    }));
+    expect(new Query(`
+        $map(
+            'pipeline',
+            [
+                [ 'index', 'balance' ],
+                [ 'range', 1 ],
+                [ 'replace', { 'old': ',', 'new': '' } ],
+                'float'
+            ]
+        ).$min
+    `).single(small_data)).toStrictEqual(min);
+});
+
+test('bad query', () => {
+    expect(new Query('$length(4*)').single({})).toStrictEqual(null);
+});
+
+test('field after special', () => {
+    const data = { a: { b: 35 } };
+    expect(new Query('a.$values.0').single(data)).toStrictEqual(data.a.b);
+});
+
+test('make object special', () => {
+    Query.register_special('makeObject', (value, context, args) => {
+        const object = {...args.$kwargs};
+        args.$args.forEach((arg, index) => {
+            object[index] = arg;
+        });
+        return object;
+    }, ['$args', '$kwargs']);
+
+    expect(new Query('$makeObject(true, false, null, 3, bob="chill", jill=[1, 2])').single({})).toStrictEqual({
+        0: true,
+        1: false,
+        2: null,
+        3: 3,
+        bob: 'chill',
+        jill: [1, 2]
+    });
+});
+
+test('filter special', () => {
+    expect(
+        new Query('$filter("latitude", "<", { "query": "longitude" }, single=false)').single(small_data)
+    ).toStrictEqual(new Filter(Key('latitude').lt(Key('longitude'))).many(small_data));
+
+    // expect(
+    //     new Query('$filter({ "field": "latitude", "operator": "<", "value": { "query": "longitude" }}, single=false)').single(small_data)
+    // ).toStrictEqual(new Filter(Key('latitude').lt(Key('longitude'))).many(small_data));
+
+    // expect(
+    //     new Query('$filter([{ "field": "latitude", "operator": "<", "value": { "query": "longitude" }}], single=false)').single(small_data)
+    // ).toStrictEqual(new Filter(Key('latitude').lt(Key('longitude'))).many(small_data));
+
+    // expect(
+    //     new Query('$filter([{ "field": "latitude", "operator": "<", "value": { "query": "longitude" }}])').single(small_data[1])
+    // ).toStrictEqual(new Filter(Key('latitude').lt(Key('longitude'))).single(small_data[1]));
+});

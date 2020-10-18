@@ -281,6 +281,53 @@ test("test strict vs not strict equality checking", () => {
     ).toStrictEqual(true);
 });
 
+test("subset", () => {
+    const data = { a: [1, 'test', true, null, 3.45] };
+    expect(new Filter(Key('a').subset(new Set([1, true, null, 3.45, 'test', 'missing']))).single(data))
+        .toStrictEqual(true);
+    expect(new Filter(Key('a').subset([1, true, null, 3.45, 'test'])).single(data))
+        .toStrictEqual(true);
+    expect(new Filter(Key('a').subset(new Set([1, true, null, 3.45]))).single(data))
+        .toStrictEqual(false);
+});
+
+test("!subset", () => {
+    const data = { a: [1, 'test', true, null, 3.45] };
+    expect(new Filter(Key('a').not_subset(new Set([1, true, null, 3.45]))).single(data))
+        .toStrictEqual(true);
+    expect(new Filter(Key('a').not_subset([])).single(data))
+        .toStrictEqual(true);
+    expect(new Filter(Key('a').not_subset(new Set([1, true, null, 3.45, 'test', 'missing']))).single(data))
+        .toStrictEqual(false);
+});
+
+test("superset", () => {
+    const data = { a: [1, 'test', true, null, 3.45] };
+    expect(new Filter(Key('a').superset(new Set([1, null]))).single(data))
+        .toStrictEqual(true);
+    expect(new Filter(Key('a').superset([])).single(data))
+        .toStrictEqual(true);
+
+    expect(new Filter(Key('a').superset(new Set([1, 3.45, false]))).single(data))
+        .toStrictEqual(false);
+    expect(new Filter(Key('a').superset(new Set(['missing']))).single(data))
+        .toStrictEqual(false);
+});
+
+test("superset", () => {
+    const data = { a: [1, 'test', true, null, 3.45] };
+    expect(new Filter(
+        [{ field: 'a', operator: '!superset', value: [1, true]}]
+    ).single(data))
+        .toStrictEqual(false);
+    expect(new Filter(Key('a').not_superset([1, true, 'bill'])).single(data))
+        .toStrictEqual(true);
+
+    expect(new Filter(
+        [{ field: 'a', operator: '!superset', value: []}]
+    ).single(data)).toStrictEqual(false);
+});
+
 test("test startswith + endswith", () => {
     let items = new Filter(Key("address").startswith("6")).many(small_data);
     expect(items.length).toStrictEqual(2);
@@ -364,4 +411,109 @@ test("filter traversal", () => {
         expect(filter).toStrictEqual(filters[ct]);
         ct += 1;
     });
+});
+
+test('first', () => {
+    let firstFemale = null;
+    small_data.forEach(item => {
+        if (item.gender === 'female' && firstFemale === null) {
+            firstFemale = item;
+        }
+    });
+
+    expect(
+        new Filter(Key('gender').seq('female')).first(small_data)
+    ).toStrictEqual(firstFemale);
+    expect(new Filter(Key('gender').seq('missing')).first(small_data)).toStrictEqual(null);
+});
+
+test('last', () => {
+    let lastFemale = null;
+    for (let i=small_data.length-1; i>=0; i--) {
+        if (small_data[i].gender === 'female' && lastFemale === null) {
+            lastFemale = small_data[i];
+        }
+    }
+        
+    expect(
+        new Filter(Key('gender').seq('female')).last(small_data)
+    ).toStrictEqual(lastFemale);
+    expect(new Filter(Key('gender').seq('missing')).last(small_data)).toStrictEqual(null);
+});
+
+test('large filter', () => {
+    const cond = Condition.orer(
+        Condition.ander(Key('age').seq(34), Key('name').seq('Chang Pollard'), Key('isActive').is_true()),
+        Condition.ander(Key('isActive').is_false(), Key('email').startswith('woodard')),
+        Condition.ander(Key('friends.$length').seq(7), Key('friends.0.name').seq('Katrina Crane')),
+        Condition.ander(Key('name').seq('Castro Wood'), Key('age').seq(-10))
+    );
+
+    expect(new Filter(cond).many(small_data)).toStrictEqual([
+        small_data[1], small_data[3], small_data[8]
+    ]);
+});
+
+test('is null', () => {
+    const items = [
+        {"a": null},
+        {"a": false},
+        {"a": null},
+        {"a": 4}
+    ];
+
+    expect(new Filter(Key('a').is_null()).many(items)).toStrictEqual([items[0], items[2]]);
+});
+
+test('deep clone', () => {
+    const cond = Condition.orer(
+        Condition.ander(Key('age').seq(34), Key('name').seq('Chang Pollard'), Key('isActive').is_true()),
+        Condition.ander(Key('isActive').is_false(), Key('email').startswith('woodard')),
+        Condition.ander(Key('friends.$length').seq(7), Key('friends.0.name').seq('Katrina Crane')),
+        Condition.ander(Key('name').seq('Castro Wood'), Key('age').seq(-10)).not_()
+    );
+
+    const cond2 = cond.clone(true);
+    expect(cond).toStrictEqual(cond2);
+    cond2.output[0]['or'][0][0]['value'] = 'test';
+    expect(cond).not.toStrictEqual(cond2);
+});
+
+test('compare two fields', () => {
+    const items = small_data.filter((a) => {
+        return a.latitude < a.longitude;
+    });
+
+    expect(new Filter(Key('latitude').lt(Key('longitude'))).many(small_data)).toStrictEqual(items);
+});
+
+test('compare two fields more complex', () => {
+    const items = small_data.filter((a) => {
+        return a.favoriteFruit.strawberry*5 >= a.favoriteFruit.cherry/2;
+    });
+
+    expect(new Filter(
+        Key('favoriteFruit.strawberry.$multiply(5)').gte(Key('favoriteFruit.cherry.$divide(2)'))
+    ).many(small_data)).toStrictEqual(items);
+});
+
+test('filter query advanced', () => {
+    const items = small_data.filter((a) => {
+        return a.friends.length === parseInt(a.greeting.split(' unread')[0].split('have ')[1]);
+    });
+
+    expect(
+        new Filter(Key('friends.$length').seq(Key('greeting.$split(" unread").0.$split("have ").1.$int'))).many(small_data)
+    ).toStrictEqual(items);
+
+    expect(
+        new Filter(Key('friends.$length').operator('===').value(Key('greeting.$split(" unread").0.$split("have ").1.$int'))).many(small_data)
+    ).toStrictEqual(items);
+});
+
+test('register filter', () => {
+    expect(Filter.register_filter('isMultiple', (field, value) => field % value === 0)).toStrictEqual(true);
+    expect(new Filter(Key('').operator('isMultiple').value(3)).single(27)).toStrictEqual(true);
+    expect(new Filter(Key('').operator('isMultiple').value(3)).single(28)).toStrictEqual(false);
+    expect(Filter.register_filter('isMultiple', (field, value) => field % value === 0)).toStrictEqual(false);
 });

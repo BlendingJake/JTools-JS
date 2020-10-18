@@ -2,7 +2,7 @@ import { Query } from "./query";
 
 export type Operator = '>' | '<' | '>=' | '<=' | '==' | '!=' | '===' | '!==' | 'in' | '!in' |
     'contains' | '!contains' | 'interval' | '!interval' | 'startswith' |
-    'endswith' | 'present' | '!present';
+    'endswith' | 'present' | '!present' | 'subset' | '!subset' | 'superset' | '!superset';
 
 export interface SingleFilter {
     field: string
@@ -150,87 +150,136 @@ export class ValueLessCondition {
         this.op = op;
     }
 
-    value(value: any) {
-        return new Condition(this.field, this.op, value);
+    value(value: any | _Key) {
+        return new Condition(
+            this.field, this.op, 
+            (value instanceof _Key) ? { query: value.field } : value
+        );
     }
 }
 
 class _Key {
-    private readonly field: string;
+    readonly field: string;
     constructor(field: string) {
         this.field = field;
     }
 
-    gt(other: number): Condition {
-        return new Condition(this.field, ">", other);
+    protected build(op: Operator, other: any | _Key) : Condition {
+        if (other instanceof _Key) {
+            return new Condition(this.field, op, { query: other.field });
+        } else {
+            return new Condition(this.field, op, other);
+        }
     }
 
-    lt(other: number): Condition {
-        return new Condition(this.field, "<", other);
+    gt(other: number | _Key): Condition {
+        return this.build('>', other);
     }
 
-    gte(other: number): Condition {
-        return new Condition(this.field, ">=", other);
+    lt(other: number | _Key): Condition {
+        return this.build('<', other);
     }
 
-    lte(other: number): Condition {
-        return new Condition(this.field, "<=", other);
+    gte(other: number | _Key): Condition {
+        return this.build('>=', other);
     }
 
-    eq(other: any): Condition {
-        return new Condition(this.field, "==", other);
+    lte(other: number | _Key): Condition {
+        return this.build('<=', other);
     }
 
-    ne(other: any): Condition {
-        return new Condition(this.field, "!=", other);
+    eq(other: any | _Key): Condition {
+        return this.build('==', other);
     }
 
-    seq(other: any): Condition {
-        return new Condition(this.field, "===", other);
+    ne(other: any | _Key): Condition {
+        return this.build('!=', other);
     }
 
-    sne(other: any): Condition {
-        return new Condition(this.field, "!==", other);
+    seq(other: any | _Key): Condition {
+        return this.build('===', other);
     }
 
-    in_(other: any): Condition {
-        return new Condition(this.field, "in", other);
+    sne(other: any | _Key): Condition {
+        return this.build('!==', other);
     }
 
-    nin(other: any): Condition {
-        return new Condition(this.field, "!in", other);
+    is_true(): Condition {
+        return this.build('===', true);
     }
 
-    contains(other: any): Condition {
-        return new Condition(this.field, "contains", other);
+    is_false(): Condition {
+        return this.build('===', false);
     }
 
-    not_contains(other: any): Condition {
-        return new Condition(this.field, "!contains", other);
+    is_null(): Condition {
+        return this.build('===', null);
     }
 
-    interval(valuesOrMin: [number, number] | number, max: number = null): Condition {
-        return new Condition(this.field, "interval", (Array.isArray(valuesOrMin)) ? valuesOrMin : [valuesOrMin, max]);
+    in_(other: any | _Key): Condition {
+        return this.build('in', other);
     }
 
-    not_interval(valuesOrMin: [number, number] | number, max: number = null): Condition {
-        return new Condition(this.field, "!interval", (Array.isArray(valuesOrMin)) ? valuesOrMin : [valuesOrMin, max]);
+    nin(other: any | _Key): Condition {
+        return this.build('!in', other);
     }
 
-    startswith(prefix: string): Condition {
-        return new Condition(this.field, "startswith", prefix);
+    contains(other: any | _Key): Condition {
+        return this.build('contains', other);
     }
 
-    endswith(suffix: string): Condition {
-        return new Condition(this.field, "endswith", suffix);
+    not_contains(other: any | _Key): Condition {
+        return this.build('!contains', other);
+    }
+
+    subset(other: any | _Key): Condition {
+        return this.build('subset', other);
+    }
+
+    not_subset(other: any | _Key): Condition {
+        return this.build('!subset', other);
+    }
+
+    superset(other: any | _Key): Condition {
+        return this.build('superset', other);
+    }
+
+    not_superset(other: any | _Key): Condition {
+        return this.build('!superset', other);
+    }
+
+    interval(valuesOrMinOrKey: [number, number] | number | _Key, max: number = null): Condition {
+        return this.build(
+            'interval', 
+            (Array.isArray(valuesOrMinOrKey) || valuesOrMinOrKey instanceof _Key) 
+            ? valuesOrMinOrKey
+            : [valuesOrMinOrKey, max]
+        );
+    }
+
+    not_interval(valuesOrMinOrKey: [number, number] | number | _Key, max: number = null): Condition {
+        return this.build(
+            '!interval', 
+            (Array.isArray(valuesOrMinOrKey) || valuesOrMinOrKey instanceof _Key) 
+            ? valuesOrMinOrKey
+            : [valuesOrMinOrKey, max]
+        );
+    }
+
+    startswith(prefix: string | _Key): Condition {
+        return this.build('startswith', prefix);
+    }
+
+    endswith(suffix: string | _Key): Condition {
+        return this.build('endswith', suffix);
     }
 
     present(): Condition {
-        return new Condition(this.field, "present", null);
+        return this.build('present', null);
     }
 
     not_present(): Condition {
-        return new Condition(this.field, "!present", null);
+        return this.build('!present', null);
     }
 
     operator(op: Operator): ValueLessCondition {
@@ -293,6 +342,34 @@ export const FILTER_OPERATIONS: FilterFunction = {
         }
     },
 
+    'subset': (fieldValue, value) => {
+        const checker = (value instanceof Set) 
+            ? (v) => value.has(v) 
+            : (Array.isArray(value))
+                ? (v) => value.includes(v)
+                : (v) => value[v] !== undefined;
+
+        let isSubset = true;
+        ((Array.isArray(fieldValue) || fieldValue instanceof Set) ? [...fieldValue] : Object.keys(fieldValue))
+            .forEach(v => {
+                if (!checker(v)) {
+                    isSubset = false;
+                }
+            });
+
+        return isSubset;
+    },
+    '!subset': (fieldValue, value) => {
+        return !FILTER_OPERATIONS.subset(fieldValue, value);
+    },
+
+    'superset': (fieldValue, value) => {
+        return FILTER_OPERATIONS.subset(value, fieldValue);
+    },
+    '!superset': (fieldValue, value) => {
+        return !FILTER_OPERATIONS.superset(fieldValue, value);
+    },
+
     "interval": (field_value, value) => { return value[0] <= field_value && field_value <= value[1]; },
     "!interval": (field_value, value) => { return field_value < value[0] || value[1] < field_value; },
 
@@ -338,7 +415,12 @@ export default class Filter {
     _preprocess(filters: FilterCondition[]): {[key: string]: Query} {
         const out: {[key: string]: Query} = {};
         Condition.fromArray(filters).traverse((filter) => {
-            out[filter.field] = new Query(filter.field, MISSING);
+            if (out[filter.field] === undefined) {
+                out[filter.field] = new Query(filter.field, MISSING);
+            }
+            if (filter.value && filter.value['query'] !== undefined && out[filter.value.query] === undefined) {
+                out[filter.value.query] = new Query(filter.value.query, MISSING);
+            }
         });
         return out;
     }
@@ -350,29 +432,36 @@ export default class Filter {
 
         let overall = null;
         let c: boolean;
-        let query_result: any;
+        let queryResult: any;
         for (let f of filters) {
             if (Array.isArray(f)) {
-                c = this._filter(item, (f as FilterCondition[]), oring, context);
+                c = this._filter(item, (f as FilterCondition[]), false, context);
             } else if ((f as OrCondition).or !== undefined) {
                 c = this._filter(item, (f as OrCondition).or, true, context);
             } else if ((f as NotCondition).not !== undefined) {
-                c = !this._filter(item, (f as NotCondition).not, oring, context);
+                c = !this._filter(item, (f as NotCondition).not, false, context);
             } else {
-                query_result = this.queries[(f as SingleFilter).field].single(item, context);
-                if (query_result === MISSING && (f as SingleFilter).operator !== 'present' && (f as SingleFilter).operator !== '!present') {
+                queryResult = this.queries[(f as SingleFilter).field].single(item, context);
+                let value: any;
+                if ((f as SingleFilter).value && (f as SingleFilter).value['query'] !== undefined) {
+                    value = this.queries[(f as SingleFilter).value.query].single(item, context);
+                } else {
+                    value = (f as SingleFilter).value;
+                }
+
+                if (queryResult === MISSING && (f as SingleFilter).operator !== 'present' && (f as SingleFilter).operator !== '!present') {
                     c = this.missing_field_response;
                 } else {
                     c = FILTER_OPERATIONS[(f as SingleFilter).operator](
-                        query_result,
-                        (f as SingleFilter).value
+                        queryResult,
+                        value
                     );
                 }                
             }
 
             if (overall === null) {
                 overall = c;
-            } else if ((f as OrCondition).or !== undefined || oring === true) {
+            } else if (oring === true) {
                 overall = c || overall;
 
                 if (overall === true) {  // shortcut or
@@ -416,6 +505,62 @@ export default class Filter {
 
         return out;
     }
+
+    first(items: any[], context: {[key in string | number]: any} = {}): any | null {
+        for (let i=0; i<items.length; i++) {
+            if (this._filter(items[i], null, false, { INDEX: i, ...context })) {
+                return items[i];
+            }
+        }
+        return null;
+    }
+
+    last(items: any[], context: {[key in string | number]: any} = {}): any | null {
+        for (let i=items.length-1; i>=0; i--) {
+            if (this._filter(items[i], null, false, { INDEX: i, ...context })) {
+                return items[i];
+            }
+        }
+        return null;
+    }
+
+    static register_filter(op: string, func: (fieldValue: any, value: any) => boolean): boolean {
+        if (FILTER_OPERATIONS[op] === undefined) {
+            FILTER_OPERATIONS[op] = func;
+            return true;
+        } else {
+            console.warn(`${op} is already registered as a filter`);
+            return false;
+        }
+    }
 }
+
+export const FILTER_CACHE: {[key: string]: Filter} = {};
+
+Query.register_special(
+    'filter',
+    (value, context, args) => {
+        let f: { field: string, operator: Operator, value: any }[];
+        if (args.$args.length === 3) {
+            f = [{ field: args.$args[0], operator: args.$args[1], value: args.$args[2] }];
+        } else if (!Array.isArray(args.$args[0])) {
+            f = [args.$args[0]];
+        } else {
+            f = args.$args[0];
+        }
+
+        const key = JSON.stringify(f);
+        if (FILTER_CACHE[key] === undefined) {
+            FILTER_CACHE[key] = new Filter(f);
+        }
+
+        if (args.single) {
+            return FILTER_CACHE[key].single(value, context);
+        } else {
+            return FILTER_CACHE[key].many(value, context);
+        }
+    },
+    ['$args', { name: 'single', default: true }]
+)
 
 export { Filter };
